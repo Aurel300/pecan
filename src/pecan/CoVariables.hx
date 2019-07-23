@@ -1,0 +1,3 @@
+package pecan;
+
+class CoVariables {}
