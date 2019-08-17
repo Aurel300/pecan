@@ -29,6 +29,8 @@ typedef LocalVar = {
     actually a loop variable.
   **/
   readOnly:Bool,
+
+  argOptional:Bool
 };
 
 typedef LocalScope = Map<String, Array<LocalVar>>;
@@ -38,6 +40,8 @@ typedef ProcessContext = {
     The AST representation, changed with each processing stage.
   **/
   block:Expr,
+
+  pos:Position,
 
   /**
     Counter for declaring coroutine-local variables.
@@ -59,6 +63,11 @@ typedef ProcessContext = {
   **/
   locals:Array<LocalVar>,
 
+  /**
+    Argument variables passed during `run`. A subset of locals.
+  **/
+  arguments:Array<LocalVar>,
+
   typeInput:ComplexType,
   typeOutput:ComplexType
 };
@@ -68,11 +77,11 @@ class Co {
   static var ctx:ProcessContext;
 
   /**
-    Initialise the type path and complex type for the class that will hold
+    Initialises the type path and complex type for the class that will hold
     the coroutine-local variables.
   **/
   static function initVariableClass():Void {
-    ctx.varsTypePath = {name: 'CoVariables${typeCounter++}', pack: ["pecan", "instances"]};
+    ctx.varsTypePath = {name: 'CoVariables$typeCounter', pack: ["pecan", "instances"]};
     ctx.varsComplexType = ComplexType.TPath(ctx.varsTypePath);
   }
 
@@ -94,7 +103,8 @@ class Co {
       type: type,
       declaredPos: varsExpr.pos,
       renamed: '_coLocal${ctx.localCounter++}',
-      readOnly: readOnly
+      readOnly: readOnly,
+      argOptional: false
     }
     if (name != null)
       ctx.topScope[name].push(localVar);
@@ -127,14 +137,50 @@ class Co {
   static function accessLocal2(localVar:LocalVar, ?pos:Position):Expr {
     var varsComplexType = ctx.varsComplexType;
     var renamed = localVar.renamed;
-    return withPos(macro (cast self.vars : $varsComplexType).$renamed, pos);
+    return withPos(macro(cast self.vars : $varsComplexType).$renamed, pos);
+  }
+
+  /**
+    Checks if the coroutine block consists of a function, parses the arguments
+    into separate variables if so.
+  **/
+  static function processArguments():Void {
+    switch (ctx.block.expr) {
+      case EFunction(_, f):
+        if (f.ret != null)
+          Context.error("coroutine function should not have a return type hint", ctx.block.pos);
+        if (f.params != null && f.params.length > 0)
+          Context.error("coroutine function should not have type parameters", ctx.block.pos);
+        var block = [];
+        for (arg in f.args) {
+          var argLocal = declareLocal(ctx.block, arg.name, arg.type, arg.value, false);
+          ctx.arguments.push(argLocal);
+          var argAccess = accessLocal2(argLocal, ctx.block.pos);
+          if (arg.opt)
+            argLocal.argOptional = true;
+          if (arg.opt && arg.value != null) {
+            block.push(macro {
+              if ($argAccess == null)
+                $argAccess = ${arg.value};
+            });
+          }
+        }
+        switch (f.expr.expr) {
+          // strip implicit return
+          case EReturn(e):
+            block.push(e);
+          case _:
+            block.push(f.expr);
+        }
+        ctx.block = withPos(macro $b{block}, ctx.block.pos);
+      case _:
+    }
   }
 
   /**
     Renames variables to unique identifiers to match variable scopes.
   **/
   static function processVariables():Void {
-    ctx.scopes = [ctx.topScope = []];
     function scoped<T>(visit:() -> T):T {
       ctx.scopes.push(ctx.topScope = []);
       var ret = visit();
@@ -158,7 +204,7 @@ class Co {
           case EFor({expr: EBinop(OpArrow, kv = {expr: EConst(CIdent(k))}, {expr: EBinop(OpIn, vv = {expr: EConst(CIdent(v))}, it)})}, body):
             var exprs = [];
             try {
-              if (!Context.unify(Context.typeof(it), Context.resolveType(macro : KeyValueIterator<Dynamic>, Context.currentPos())))
+              if (!Context.unify(Context.typeof(it), Context.resolveType(macro:KeyValueIterator<Dynamic>, Context.currentPos())))
                 throw 0;
             } catch (e:Dynamic) {
               it = macro $it.keyValueIterator();
@@ -179,7 +225,7 @@ class Co {
           case EFor({expr: EBinop(OpIn, ev = {expr: EConst(CIdent(v))}, it)}, body):
             var exprs = [];
             try {
-              if (!Context.unify(Context.typeof(it), Context.resolveType(macro : Iterator<Dynamic>, Context.currentPos())))
+              if (!Context.unify(Context.typeof(it), Context.resolveType(macro:Iterator<Dynamic>, Context.currentPos())))
                 throw 0;
             } catch (e:Dynamic) {
               it = macro $it.iterator();
@@ -224,8 +270,6 @@ class Co {
       };
     }
     ctx.block = walk(ctx.block);
-    ctx.scopes = null;
-    ctx.topScope = null;
     // Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
   }
 
@@ -237,7 +281,7 @@ class Co {
     var varsType = macro class $varsTypeName extends pecan.CoVariables {
       public function new() {}
     };
-    varsType.pack = ["pecan", "instances"];
+    varsType.pack = ctx.varsTypePath.pack;
     for (localVar in ctx.locals) {
       varsType.fields.push({
         access: [APublic],
@@ -317,7 +361,70 @@ class Co {
   }
 
   /**
-    Parse an expr like `(_ : Type)` to a ComplexType.
+    Builds and returns a factory subtype.
+  **/
+  static function buildFactory():Expr {
+    var tin = ctx.typeInput;
+    var tout = ctx.typeOutput;
+    var varsTypePath = ctx.varsTypePath;
+    var factoryTypePath = {name: 'CoFactory$typeCounter', pack: ["pecan", "instances"]};
+    var factoryTypeName = factoryTypePath.name;
+    var factoryType = macro class $factoryTypeName extends pecan.CoFactory<$tin, $tout> {
+      public function new(actions:Array<pecan.CoAction<$tin, $tout>>) {
+        super(actions, args -> {
+          var ret = new $varsTypePath();
+          $b{
+            [
+              for (i in 0...ctx.arguments.length)
+                macro $p{["ret", ctx.arguments[i].renamed]} = args[$v{i}]
+            ]
+          };
+          ret;
+        });
+      }
+    };
+    factoryType.pack = factoryTypePath.pack;
+    factoryType.fields.push({
+      access: [APublic],
+      kind: FFun({
+        args: [
+          for (i in 0...ctx.arguments.length)
+            {
+              name: 'arg$i',
+              type: ctx.arguments[i].type,
+              opt: ctx.arguments[i].argOptional
+            }
+        ],
+        expr: macro return $e{
+          {
+            expr: ECall({expr: EConst(CIdent("runBase")), pos: ctx.pos}, [
+              {
+                expr: EArrayDecl([
+                  for (i in 0...ctx.arguments.length)
+                    {
+                      expr: EConst(CIdent('arg$i')),
+                      pos: ctx.pos
+                    }
+                ]),
+                pos: ctx.pos
+              }
+            ]),
+            pos: ctx.pos
+          }
+        },
+        ret: macro:pecan.Co<$tin, $tout>
+      }),
+      name: "run",
+      pos: ctx.pos
+    });
+    // Sys.println(new haxe.macro.Printer().printTypeDefinition(factoryType));
+    Context.defineType(factoryType);
+    // actions are passed by argument to allow for closure variable capture
+    return macro new $factoryTypePath(${ctx.block});
+  }
+
+  /**
+    Parses an expr like `(_ : Type)` to a ComplexType.
   **/
   static function parseIOType(e:Expr):ComplexType {
     return (switch (e) {
@@ -330,27 +437,28 @@ class Co {
   public static function co(block:Expr, ?tin:Expr, ?tout:Expr):Expr {
     ctx = {
       block: block,
+      pos: block.pos,
       localCounter: 0,
       varsTypePath: null,
       varsComplexType: null,
       locals: [],
-      topScope: null,
+      arguments: [],
+      topScope: [],
       scopes: null,
       typeInput: parseIOType(tin),
       typeOutput: parseIOType(tout)
     };
+    ctx.scopes = [ctx.topScope];
 
     initVariableClass();
+    processArguments();
     processVariables();
     finaliseVariableClass();
     convert();
+    var factory = buildFactory();
 
-    var actions = ctx.block;
-    var varsTypePath = ctx.varsTypePath;
-    var tin = ctx.typeInput;
-    var tout = ctx.typeOutput;
+    typeCounter++;
     ctx = null;
-
-    return macro new pecan.CoFactory<$tin, $tout>($actions, () -> new $varsTypePath());
+    return factory;
   }
 }

@@ -332,4 +332,47 @@ class TestCoroutine extends Test {
       eq('$a', "3");
     }).run().tick();
   }
+
+  /**
+    Argument passing.
+  **/
+  function testArguments() {
+    co((a:Int) -> {
+      eq(a, 1);
+      a++;
+      eq(a, 2);
+    }).run(1).tick();
+    var c = co((a:String, b:Float) -> {
+      eq(a, "foo");
+      eq(b, 1.0);
+      suspend();
+      eq(a, "foo");
+      eq(b, 1.0);
+    }).run("foo", 1.0);
+    c.tick();
+    c.wakeup();
+    eq(c.state, Terminated);
+
+    // optional and default
+    co((?a:String) -> {
+      eq(a, null);
+    }).run().tick();
+
+    co((?a:String = "foo", ?b:Int = 2) -> {
+      eq(a, "foo");
+      eq(b, 2);
+    }).run().tick();
+    co((?a:String = "foo", ?b:Int = 2) -> {
+      eq(a, "bar");
+      eq(b, 4);
+    }).run("bar", 4).tick();
+    co((?a:String = "foo", ?b:Int = 2) -> {
+      eq(a, "bar");
+      eq(b, 2);
+    }).run("bar").tick();
+    co((?a:String = "foo", ?b:Int = 2) -> {
+      eq(a, "foo");
+      eq(b, 4);
+    }).run(4).tick();
+  }
 }

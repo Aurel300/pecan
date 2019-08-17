@@ -9,6 +9,7 @@
 
  - [Coroutines](#coroutines)
    - [Suspending](#suspending)
+   - [Arguments](#arguments)
    - [I/O](#io)
    - [API](#api)
    - [Limitations](#limitations)
@@ -51,7 +52,7 @@ var c = co({
   trace("hello");
   suspend();
   trace("world");
-});
+}).run();
 c.tick();
 trace("Haxe");
 c.wakeup();
@@ -63,6 +64,18 @@ The `suspend` call can optionally take a single argument, which should be a func
 (TODO: this seems a bit useless now, since the `wakeup` call can simply be scheduled immediately before the `suspend` call.)
 
 Coroutines can also be terminated completely, which means they cannot be woken up again. This is achieved with the `terminate()` call.
+
+### Arguments
+
+Coroutines can be declared to accept arguments. These are values passed to the coroutine once, when it is created with the `run` method of its factory. To declare a coroutine that takes arguments, pass a function declaration into the `co` call:
+
+```haxe
+var greeter = co((name:String) -> {
+  trace('Hello, $name!');
+});
+greeter.run("Haxe").tick(); // outputs Hello, Haxe!
+greeter.run("world").tick(); // outputs Hello, world!
+```
 
 ### I/O
 
@@ -92,7 +105,7 @@ Similarly, `yield(...)` can be used to provide output from the coroutine:
 var languages = co({
   yield("Haxe");
   yield("Haxe 4");
-}, null, (_ : String));
+}, null, (_ : String)).run();
 trace('${languages.take()} is awesome!'); // outputs Haxe is awesome!
 trace('${languages.take()} is awesome!'); // outputs Haxe 4 is awesome!
 ```
