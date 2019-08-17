@@ -1,9 +1,18 @@
 # `pecan`
 
-`pecan` is a library for [Haxe](https://github.com/HaxeFoundation/haxe).
+`pecan` is a library for [Haxe](https://github.com/HaxeFoundation/haxe) that provides two features:
 
- - [coroutines](#coroutines) - asynchronous game logic with restorable state and state queues
- - [ECA](https://en.wikipedia.org/wiki/Event_condition_action) (Event condition action) - a system to specify "triggers" for various events (TODO)
+ - **coroutines** - suspendable functions with serialisable state
+ - **event-condition-action** - a system to specify "triggers" for various events (TODO)
+
+---
+
+ - [Coroutines](#coroutines)
+   - [Suspending](#suspending)
+   - [I/O](#io)
+   - [API](#api)
+   - [Limitations](#limitations)
+   - [Internals](#internals)
 
 ## Coroutines
 
@@ -128,17 +137,9 @@ Stop executing actions immediately (when called from within the coroutine), set 
  - `self`, `accept`, `yield`, `suspend`, and `terminate` are "magical" constructs that work as documented, but cannot e.g. be bound with `bind` or treated like proper functions
  - suspending calls generally only work as "statements", not as sub-expressions
 
-### TODO
-
- - improve error position reporting
- - `accept` in any expression
- - suspending blocks as expressions (array/map comprehension)
- - flatten actions (state machine)
- - arguments
-
 ### Internals
 
-The implementations for `pecan` coroutines consists of two separate parts: [the macro [`pecan.Co.co`](src/pecan/Co.macro.hx), which transforms a regular Haxe code block to an array of actions; and [the runtime `pecan.Co`](src/pecan/Co.hx), which executes the actions.
+The implementations for `pecan` coroutines consists of two separate parts: [the macro `pecan.Co.co`](src/pecan/Co.macro.hx), which transforms a regular Haxe code block to an array of actions; and [the runtime `pecan.Co`](src/pecan/Co.hx), which executes the actions.
 
 At runtime, coroutines are represented as arrays of `pecan.CoAction`. The various different kinds of actions are expressed with the `enum` `pecan.CoAction.CoActionKind`:
 
