@@ -41,7 +41,11 @@ class TestCoroutine extends Test {
     Variable scoping.
   **/
   function testVars() {
+    var a = 1;
     co({
+      // `a` here should refer to the `a` outside
+      eq(a, 1);
+
       var a = 3;
       var b = 4;
       eq(a, 3);
@@ -188,6 +192,9 @@ class TestCoroutine extends Test {
     c.give(1);
   }
 
+  /**
+    Various control flow blocks.
+  **/
   function testSyntax() {
     // if/else blocks
     var c = co({
@@ -302,5 +309,27 @@ class TestCoroutine extends Test {
     eq(c.take(), 1);
     eq(c.take(), 2);
     eq(c.state, Terminated);
+
+    var c = co({
+      // order is not defined in maps
+      for (k => v in [0 => 0, 1 => 1, 2 => 2]) {
+        eq(k, v);
+      }
+    }).run();
+    c.tick();
+    eq(c.state, Terminated);
+  }
+
+  /**
+    String interpolation.
+  **/
+  function testStringInterpolation() {
+    var a = 1;
+    co({
+      eq('$a', "1");
+      eq('${a + 1}', "2");
+      var a = 3;
+      eq('$a', "3");
+    }).run().tick();
   }
 }

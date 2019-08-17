@@ -4,6 +4,8 @@ import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.ExprTools;
 
+using haxe.macro.MacroStringTools;
+
 typedef LocalVar = {
   /**
     Name of the original variable.
@@ -152,6 +154,27 @@ class Co {
               for (c in cases)
                 {expr: c.expr != null ? walk(c.expr) : null, guard: c.guard != null ? walk(c.guard) : null, values: ExprArrayTools.map(c.values, walk)}
             ], edef == null || edef.expr == null ? edef : scoped(() -> walk(edef)));
+          // change key-value `for` loops to `while` loops
+          case EFor({expr: EBinop(OpArrow, kv = {expr: EConst(CIdent(k))}, {expr: EBinop(OpIn, vv = {expr: EConst(CIdent(v))}, it)})}, body):
+            var exprs = [];
+            try {
+              if (!Context.unify(Context.typeof(it), Context.resolveType(macro : KeyValueIterator<Dynamic>, Context.currentPos())))
+                throw 0;
+            } catch (e:Dynamic) {
+              it = macro $it.keyValueIterator();
+            }
+            var iterVarAccess = accessLocal2(declareLocal(it, null, null, it, true), it.pos);
+            var iterStructAccess = accessLocal2(declareLocal(it, null, null, macro $it.next(), true), it.pos);
+            var keyVar = declareLocal(kv, k, null, macro $it.next().key, true);
+            var valueVar = declareLocal(vv, v, null, macro $it.next().value, true);
+            exprs.push(macro $iterVarAccess = $it);
+            exprs.push(macro while ($iterVarAccess.hasNext()) {
+              $iterStructAccess = $iterVarAccess.next();
+              $e{accessLocal2(keyVar, kv.pos)} = $iterStructAccess.key;
+              $e{accessLocal2(valueVar, vv.pos)} = $iterStructAccess.value;
+              $e{walk(body)};
+            });
+            return macro $b{exprs};
           // change `for` loops to `while` loops
           case EFor({expr: EBinop(OpIn, ev = {expr: EConst(CIdent(v))}, it)}, body):
             var exprs = [];
@@ -190,6 +213,11 @@ class Co {
             // trace('ident: $ident -> ${lookup(ident)}');
             var res = accessLocal(e, ident, false);
             return res != null ? res : e;
+          // handle format strings
+          case EConst(CString(s)):
+            if (MacroStringTools.isFormatExpr(e))
+              return walk(s.formatString(e.pos));
+            return e;
           case _:
             return ExprTools.map(e, walk);
         })
