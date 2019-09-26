@@ -9,6 +9,7 @@
 
  - [Coroutines](#coroutines)
    - [Suspending](#suspending)
+   - [Defining suspending functions](#defining-suspending-functions)
    - [Arguments](#arguments)
    - [I/O](#io)
    - [API](#api)
@@ -65,6 +66,33 @@ The `suspend` call can optionally take a single argument, which should be a func
 
 Coroutines can also be terminated completely, which means they cannot be woken up again. This is achieved with the `terminate()` call.
 
+### Defining suspending functions
+
+It is possible to declare methods as suspending. These methods must be marked with the `:pecan.suspend` metadata, they must take the coroutine `pecan.Co<...>` and its wakeup function `()->Void` as their last two arguments, and they must return `Bool`, indicating whether or not the coroutine should be suspended following the call.
+
+Functions declared this way can then be called from within coroutines, and they will suspend the coroutine as needed.
+
+An example to use `haxe.Timer.delay` as a suspending function:
+
+```haxe
+class Foobar {
+  @:pecan.suspend public static function delay<T, U>(ms:Int, co:pecan.Co<T, U>, wakeup:()->Void):Bool {
+    haxe.Timer.delay(wakeup, ms);
+    return true;
+  }
+}
+```
+
+Then simply:
+
+```haxe
+co({
+  trace("Hello,");
+  Foobar.delay(1000); // one second of suspense
+  trace("Haxe!");
+}).run().tick();
+```
+
 ### Arguments
 
 Coroutines can be declared to accept arguments. These are values passed to the coroutine once, when it is created with the `run` method of its factory. To declare a coroutine that takes arguments, pass a function declaration into the `co` call:
@@ -76,6 +104,8 @@ var greeter = co((name:String) -> {
 greeter.run("Haxe").tick(); // outputs Hello, Haxe!
 greeter.run("world").tick(); // outputs Hello, world!
 ```
+
+Arguments can be optional, in which case they should be prefixed with `?` and have a default value. Any non-optional argument must have a type hint.
 
 ### I/O
 

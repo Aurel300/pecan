@@ -3,6 +3,8 @@ package pecan;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.ExprTools;
+import haxe.macro.Type;
+import haxe.macro.TypedExprTools;
 
 using haxe.macro.MacroStringTools;
 
@@ -165,13 +167,15 @@ class Co {
             });
           }
         }
-        switch (f.expr.expr) {
-          // strip implicit return
-          case EReturn(e):
-            block.push(e);
-          case _:
-            block.push(f.expr);
+        function stripReturn(e:Expr):Expr {
+          return (switch (e.expr) {
+            case EBlock([e]) | EReturn(e) | EMeta({name: ":implicitReturn"}, e):
+              stripReturn(e);
+            case _:
+              e;
+          });
         }
+        block.push(stripReturn(f.expr));
         ctx.block = withPos(macro $b{block}, ctx.block.pos);
       case _:
     }
@@ -320,6 +324,11 @@ class Co {
     var tin = ctx.typeInput;
     var tout = ctx.typeOutput;
     function walk(e:Expr):Void {
+      function pushSync():Void {
+        top.push(macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void {
+          $e;
+        })));
+      }
       top.push(switch (e.expr) {
         case EBinop(binop = OpAssign | OpAssignOp(_), target, {expr: ECall({expr: EConst(CIdent("accept"))}, [])}):
           macro new pecan.CoAction(Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
@@ -340,6 +349,23 @@ class Co {
           macro new pecan.CoAction(Yield(function(self:pecan.Co<$tin, $tout>):$tout {
             return $expr;
           }));
+        case ECall(f, args):
+          var typed = try Context.typeExpr(macro function(self:pecan.Co<$tin, $tout>) {
+            $f;
+          }) catch (e:Dynamic) null;
+          if (typed == null)
+            return pushSync();
+          switch (typed.expr) {
+            case TFunction({expr: {expr: TBlock([{expr: TField(_, FStatic(_, _.get().meta.has(":pecan.suspend") => true))}])}}):
+              var args = args.copy();
+              args.push(macro self);
+              args.push(macro wakeup);
+              macro new pecan.CoAction(Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
+                return $f($a{args});
+              }));
+            case _:
+              return pushSync();
+          }
         case EBlock(bs):
           var sub = macro $a{sub(() -> bs.map(walk))};
           macro new pecan.CoAction(Block($sub));
@@ -352,7 +378,7 @@ class Co {
           var sub:Expr = macro $a{flatten(sub(() -> walk(e)))};
           macro new pecan.CoAction(While(function(self:pecan.Co<$tin, $tout>):Bool return $cond, $sub, $v{normalWhile}));
         case _:
-          macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void$e));
+          return pushSync();
       });
     }
     var converted = sub(() -> walk(ctx.block));
