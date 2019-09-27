@@ -117,17 +117,17 @@ var outputsStrings = co({/* ... */}, null, (_ : String));
 var takesBoolsAndOutputsDates = co({/* ... */}, (_ : Bool), (_ : Date));
 ```
 
-Within the coroutine code, `accept()` can be used to accept input of the declared type. It can only be used in a variable declaration or assignment:
+Within the coroutine code, `accept()` can be used to accept input of the declared type:
 
 ```haxe
 var greeter = co({
-  var name = accept();
-  var from = accept();
-  trace('Hello, $name, from $from!');
+  trace('Hello, ${accept()}, from ${accept()}!');
 }, (_ : String)).run();
 greeter.give("Haxe");
 greeter.give("pecan"); // outputs Hello, Haxe, from pecan!
 ```
+
+All `accept()` calls within an expression are evaluated first. `true ? accept() : accept()` requires two values, even though only the first one will be used. There are some places which cannot contain an `accept()` call, e.g. the condition of a while loop (TODO).
 
 Similarly, `yield(...)` can be used to provide output from the coroutine:
 

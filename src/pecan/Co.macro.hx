@@ -91,12 +91,17 @@ class Co {
     if (type == null && expr == null)
       Context.error('invalid variable declaration for $name - must have either a type hint or an expression', varsExpr.pos);
     if (type == null) {
-      type = (switch (expr) {
-        case {expr: ECall({expr: EConst(CIdent("accept"))}, [])}:
-          ctx.typeInput;
-        case _:
-          try Context.toComplexType(Context.typeof(expr)) catch (e:Dynamic) Context.error('cannot infer type for $name - provide a type hint', expr.pos);
-      });
+      function mapType(e:Expr):Expr {
+        return (switch (e.expr) {
+          case ECall({expr: EConst(CIdent("accept"))}, []):
+            var tin = ctx.typeInput;
+            macro (null : $tin);
+          case _:
+            ExprTools.map(e, mapType);
+        });
+      }
+      var mapped = mapType(expr);
+      type = try Context.toComplexType(Context.typeof(mapped)) catch (e:Dynamic) Context.error('cannot infer type for $name - provide a type hint', expr.pos);
     }
     if (name != null && !ctx.topScope.exists(name))
       ctx.topScope[name] = [];
@@ -323,17 +328,27 @@ class Co {
     }
     var tin = ctx.typeInput;
     var tout = ctx.typeOutput;
-    function walk(e:Expr):Void {
+    function walkExpr(e:Expr, ?allowAccept:Bool = true):Expr {
+      return (switch (e.expr) {
+        case ECall({expr: EConst(CIdent("accept"))}, []):
+          if (!allowAccept)
+            Context.error("invalid location for accept() call", e.pos);
+          var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
+          top.push(macro new pecan.CoAction(Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
+            $tmpVarAccess = value;
+          })));
+          macro $tmpVarAccess;
+        case _:
+          ExprTools.map(e, walkExpr.bind(_, allowAccept));
+      });
+    }
+    function walkStatement(e:Expr):Void {
       function pushSync():Void {
         top.push(macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void {
-          $e;
+          $e{walkExpr(e)};
         })));
       }
       top.push(switch (e.expr) {
-        case EBinop(binop = OpAssign | OpAssignOp(_), target, {expr: ECall({expr: EConst(CIdent("accept"))}, [])}):
-          macro new pecan.CoAction(Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
-            ${{expr: EBinop(binop, target, macro value), pos: e.pos}};
-          }));
         case ECall({expr: EConst(CIdent("terminate"))}, []):
           macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void {
             self.terminate();
@@ -347,7 +362,7 @@ class Co {
           }));
         case ECall({expr: EConst(CIdent("yield"))}, [expr]):
           macro new pecan.CoAction(Yield(function(self:pecan.Co<$tin, $tout>):$tout {
-            return $expr;
+            return $e{walkExpr(expr)};
           }));
         case ECall(f, args):
           var typed = try Context.typeExpr(macro function(self:pecan.Co<$tin, $tout>) {
@@ -357,7 +372,7 @@ class Co {
             return pushSync();
           switch (typed.expr) {
             case TFunction({expr: {expr: TBlock([{expr: TField(_, FStatic(_, _.get().meta.has(":pecan.suspend") => true))}])}}):
-              var args = args.copy();
+              var args = args.map(walkExpr.bind(_, true));
               args.push(macro self);
               args.push(macro wakeup);
               macro new pecan.CoAction(Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
@@ -367,21 +382,21 @@ class Co {
               return pushSync();
           }
         case EBlock(bs):
-          var sub = macro $a{sub(() -> bs.map(walk))};
+          var sub = macro $a{sub(() -> bs.map(walkStatement))};
           macro new pecan.CoAction(Block($sub));
         case EIf(cond, eif, eelse):
-          var subif:Expr = macro $a{flatten(sub(() -> walk(eif)))};
+          var subif:Expr = macro $a{flatten(sub(() -> walkStatement(eif)))};
           var subelse:Expr = macro null;
-          if (eelse != null) subelse = macro $a{flatten(sub(() -> walk(eelse)))};
-          macro new pecan.CoAction(If(function(self:pecan.Co<$tin, $tout>):Bool return $cond, $subif, $subelse));
+          if (eelse != null) subelse = macro $a{flatten(sub(() -> walkStatement(eelse)))};
+          macro new pecan.CoAction(If(function(self:pecan.Co<$tin, $tout>):Bool return $e{walkExpr(cond)}, $subif, $subelse));
         case EWhile(cond, e, normalWhile):
-          var sub:Expr = macro $a{flatten(sub(() -> walk(e)))};
-          macro new pecan.CoAction(While(function(self:pecan.Co<$tin, $tout>):Bool return $cond, $sub, $v{normalWhile}));
+          var sub:Expr = macro $a{flatten(sub(() -> walkStatement(e)))};
+          macro new pecan.CoAction(While(function(self:pecan.Co<$tin, $tout>):Bool return $e{walkExpr(cond, false)}, $sub, $v{normalWhile}));
         case _:
           return pushSync();
       });
     }
-    var converted = sub(() -> walk(ctx.block));
+    var converted = sub(() -> walkStatement(ctx.block));
     ctx.block = macro $a{converted};
     // Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
   }
@@ -479,8 +494,8 @@ class Co {
     initVariableClass();
     processArguments();
     processVariables();
-    finaliseVariableClass();
     convert();
+    finaliseVariableClass();
     var factory = buildFactory();
 
     typeCounter++;
