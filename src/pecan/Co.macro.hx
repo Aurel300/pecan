@@ -263,7 +263,7 @@ class Co {
           // resolve identifiers to renamed variables
           case EBinop(binop = OpAssign | OpAssignOp(_), ev = {expr: EConst(CIdent(ident))}, rhs):
             var res = accessLocal(ev, ident, true);
-            return res != null ? {expr: EBinop(binop, res, rhs), pos: e.pos} : e;
+            return {expr: EBinop(binop, res != null ? res : ev, walk(rhs)), pos: e.pos};
           case EConst(CIdent(ident)):
             // trace('ident: $ident -> ${lookup(ident)}');
             var res = accessLocal(e, ident, false);

@@ -42,7 +42,11 @@ class TestCoroutine extends Test {
   **/
   function testVars() {
     var a = 1;
+    var b = 2;
     co({
+      // external variable
+      b = 3;
+
       // `a` here should refer to the `a` outside
       eq(a, 1);
 
@@ -95,6 +99,7 @@ class TestCoroutine extends Test {
       var a = "foo";
       eq(a, "foo");
     }).run().tick();
+    eq(b, 3);
   }
 
   /**
