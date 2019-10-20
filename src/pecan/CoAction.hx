@@ -35,7 +35,7 @@ class CoAction<TIn, TOut> {
 
 enum CoAction<TIn, TOut> {
   Sync(_:(self:Co<TIn, TOut>) -> Void, next:Int);
-  Suspend(?_:(self:Co<TIn, TOut>, wakeup:() -> Void) -> Bool, next:Int);
+  Suspend(_:(self:Co<TIn, TOut>, wakeup:() -> Void) -> Bool, next:Int);
   If(cond:(self:Co<TIn, TOut>) -> Bool, nextIf:Int, nextElse:Int);
   Accept(_:(self:Co<TIn, TOut>, value:TIn) -> Void, next:Int);
   Yield(_:(self:Co<TIn, TOut>) -> TOut, next:Int);

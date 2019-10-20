@@ -45,8 +45,6 @@ typedef ProcessContext = {
 
   pos:Position,
 
-  entryPosition:Int,
-
   /**
     Counter for declaring coroutine-local variables.
   **/
@@ -81,6 +79,9 @@ class Co {
   static var typeCounter = 0;
   static var ctx:ProcessContext;
 
+  static var tin:ComplexType;
+  static var tout:ComplexType;
+
   /**
     Initialises the type path and complex type for the class that will hold
     the coroutine-local variables.
@@ -97,7 +98,6 @@ class Co {
       function mapType(e:Expr):Expr {
         return (switch (e.expr) {
           case ECall({expr: EConst(CIdent("accept"))}, []):
-            var tin = ctx.typeInput;
             macro (null : $tin);
           case _:
             ExprTools.map(e, mapType);
@@ -311,19 +311,26 @@ class Co {
     Performs CFA to translate nested blocks into a single array of `CoAction`s.
   **/
   static function convert():Void {
-    var actions:Array<Expr> = [];
-    function push(action:Expr):Int {
-      var idx = actions.length;
-      actions.push(action);
-      return idx;
+    var cfa:Array<CFA> = [];
+    function push(kind:CFAKind, expr:Null<Expr>, next:Array<CFA>):CFA {
+      var ret:CFA = {
+        kind: kind,
+        expr: expr,
+        next: next,
+        prev: [],
+        idx: -1
+      };
+      for (n in next)
+        if (n != null)
+          n.prev.push(ret);
+      cfa.push(ret);
+      return ret;
     }
-    var tin = ctx.typeInput;
-    var tout = ctx.typeOutput;
-    var loops:Array<{idxCond:Int, idxNext:Int}> = [];
-    function walkExpr(e:Expr, idxNext:Int):{e:Expr, idx:Int} {
+    var loops:Array<{cond:CFA, next:CFA}> = [];
+    function walkExpr(e:Expr, next:CFA):{e:Expr, next:CFA} {
       function sub(e:Expr):Expr {
-        var ret = walkExpr(e, idxNext);
-        idxNext = ret.idx;
+        var ret = walkExpr(e, next);
+        next = ret.next;
         return ret.e;
       }
       return (switch (e.expr) {
@@ -332,149 +339,213 @@ class Co {
           //if (!allowAccept)
           //  Context.error("invalid location for accept() call", e.pos);
           var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
-          var acceptIdx = push(macro pecan.CoAction.Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
-            $tmpVarAccess = value;
-          }, $v{idxNext}));
-          {e: macro $tmpVarAccess, idx: acceptIdx};
+          var accept = push(Accept, macro $tmpVarAccess = value, [next]);
+          {e: macro $tmpVarAccess, next: accept};
         // expressions which should have been filtered out by now
         case EVars(_) | EFor(_, _) | EWhile(_, _, _) | EReturn(_) | EBreak | EContinue:
           Context.error("unexpected", e.pos);
         // unmapped expressions
         case EConst(_) | EFunction(_, _) | ESwitch(_, _, _) | EUntyped(_) | EDisplay(_, _) | EDisplayNew(_):
-          {e: e, idx: idxNext};
+          {e: e, next: next};
         // normal expressions
         case EArray(sub(_) => e1, sub(_) => e2):
-          {e: {expr: EArray(e1, e2), pos: e.pos}, idx: idxNext};
+          {e: {expr: EArray(e1, e2), pos: e.pos}, next: next};
         //case EBinop(OpBoolAnd, e1, e2):
         case EBinop(op, sub(_) => e1, sub(_) => e2): // TODO: order of evaluation? short circuiting?
-          {e: {expr: EBinop(op, e1, e2), pos: e.pos}, idx: idxNext};
+          {e: {expr: EBinop(op, e1, e2), pos: e.pos}, next: next};
         case EField(sub(_) => e1, field):
-          {e: {expr: EField(e1, field), pos: e.pos}, idx: idxNext};
+          {e: {expr: EField(e1, field), pos: e.pos}, next: next};
         case EParenthesis(sub(_) => e1):
-          {e: {expr: EParenthesis(e1), pos: e.pos}, idx: idxNext};
-        case EObjectDecl(fields):
+          {e: {expr: EParenthesis(e1), pos: e.pos}, next: next};
+        case EObjectDecl(fields): // TODO: reverse fields
           var fields = fields.map(f -> {
             expr: sub(f.expr),
             field: f.field,
             quotes: f.quotes
           });
-          {e: {expr: EObjectDecl(fields), pos: e.pos}, idx: idxNext};
+          {e: {expr: EObjectDecl(fields), pos: e.pos}, next: next};
         case EArrayDecl(_.map(sub) => values):
-          {e: {expr: EArrayDecl(values), pos: e.pos}, idx: idxNext};
+          {e: {expr: EArrayDecl(values), pos: e.pos}, next: next};
         case ECall(e1, params):
           var params = params.map(sub);
           var e1 = sub(e1);
-          {e: {expr: ECall(e1, params), pos: e.pos}, idx: idxNext};
+          {e: {expr: ECall(e1, params), pos: e.pos}, next: next};
         case ENew(t, params):
           var params = params.map(sub);
-          {e: {expr: ENew(t, params), pos: e.pos}, idx: idxNext};
+          {e: {expr: ENew(t, params), pos: e.pos}, next: next};
         case EUnop(op, postFix, sub(_) => e1):
-          {e: {expr: EUnop(op, postFix, e1), pos: e.pos}, idx: idxNext};
+          {e: {expr: EUnop(op, postFix, e1), pos: e.pos}, next: next};
         case EBlock(es):
           if (es.length == 0)
-            {e: {expr: EBlock([]), pos: e.pos}, idx: idxNext};
+            {e: {expr: EBlock([]), pos: e.pos}, next: next};
           else {
             var es = [ for (ri in 0...es.length) sub(es[es.length - ri - 1]) ];
             es.reverse();
-            {e: {expr: EBlock(es), pos: e.pos}, idx: idxNext};
+            {e: {expr: EBlock(es), pos: e.pos}, next: next};
           }
         case EIf(sub(_) => econd, sub(_) => eif, sub(_) => eelse):
           // TODO: branch dependencies are always executed
-          {e: {expr: EIf(econd, eif, eelse), pos: e.pos}, idx: idxNext};
+          {e: {expr: EIf(econd, eif, eelse), pos: e.pos}, next: next};
         case EThrow(sub(_) => e1):
-          {e: {expr: EThrow(e1), pos: e.pos}, idx: idxNext};
+          {e: {expr: EThrow(e1), pos: e.pos}, next: next};
         case ECast(sub(_) => e1, t):
-          {e: {expr: ECast(e1, t), pos: e.pos}, idx: idxNext};
+          {e: {expr: ECast(e1, t), pos: e.pos}, next: next};
         case ETernary(sub(_) => e1, sub(_) => e2, sub(_) => e3):
-          {e: {expr: ETernary(e1, e2, e3), pos: e.pos}, idx: idxNext};
+          {e: {expr: ETernary(e1, e2, e3), pos: e.pos}, next: next};
         case ECheckType(sub(_) => e1, t):
-          {e: {expr: ECheckType(e1, t), pos: e.pos}, idx: idxNext};
+          {e: {expr: ECheckType(e1, t), pos: e.pos}, next: next};
         case EMeta(s, sub(_) => e1):
-          {e: {expr: EMeta(s, e1), pos: e.pos}, idx: idxNext};
+          {e: {expr: EMeta(s, e1), pos: e.pos}, next: next};
         case _:
-          {e: e, idx: idxNext};
+          {e: e, next: next};
           //Context.error('complex expr ${e.expr}', e.pos);
       });
     }
-    function walk(e:Expr, idxNext:Int):Int {
+    function walk(e:Expr, next:CFA):CFA {
+      if (e == null)
+        return next;
       return (switch (e.expr) {
         // special calls
         case ECall({expr: EConst(CIdent("terminate"))}, []):
-          push(macro pecan.CoAction.Sync(function(self:pecan.Co<$tin, $tout>):Void {
-            self.terminate();
-          }, -1));
+          push(Sync, macro self.terminate(), []);
         case ECall({expr: EConst(CIdent("suspend"))}, []):
-          push(macro pecan.CoAction.Suspend(null, $v{idxNext}));
+          push(Suspend, macro return true, [next]);
         case ECall({expr: EConst(CIdent("suspend"))}, [f]):
-          push(macro pecan.CoAction.Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
+          push(Suspend, macro {
             $f(self, wakeup);
             return true;
-          }, $v{idxNext}));
+          }, [next]);
         case ECall({expr: EConst(CIdent("yield"))}, [expr]):
-          var idxYield = push(null);
-          var expr = walkExpr(expr, idxYield);
-          actions[idxYield] = macro pecan.CoAction.Yield(function(self:pecan.Co<$tin, $tout>):$tout {
-            return $e{expr.e};
-          }, $v{idxNext});
-          expr.idx;
+          var yield = push(Yield, null, [next]);
+          var expr = walkExpr(expr, yield);
+          yield.expr = macro return $e{expr.e};
+          expr.next;
         case ECall(f, args) if (checkSuspending(f)):
-          var idxCall = push(null);
-          var next = idxCall;
+          var call = push(Suspend, null, [next]);
+          var next = call;
           var args = [ for (ri in 0...args.length) {
             var ret = walkExpr(args[args.length - ri - 1], next);
-            next = ret.idx;
+            next = ret.next;
             ret.e;
           } ];
           args.push(macro self);
           args.push(macro wakeup);
-          actions[idxCall] = macro pecan.CoAction.Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
-            return $f($a{args});
-          }, $v{idxNext});
+          call.expr = macro return $f($a{args});
           next;
+        // optimised variants
+        case EWhile({expr: EConst(CIdent("true"))}, body, _):
+          var cfaBody = walk(body, null);
+          cfaBody.next = [cfaBody, cfaBody];
+          cfaBody.prev.push(cfaBody);
+          cfaBody;
+        case EIf({expr: EConst(CIdent("true"))}, eif, _):
+          walk(eif, next);
+        case EIf({expr: EConst(CIdent("false"))}, _, eelse):
+          walk(eelse, next);
         // normal blocks
         case EBlock(es):
-          var next = idxNext;
+          var next = next;
           for (ri in 0...es.length)
             next = walk(es[es.length - ri - 1], next);
           next;
         case EIf(cond, eif, eelse):
-          var idxCond = push(null);
-          var cond = walkExpr(cond, idxCond);
-          var idxIf = walk(eif, idxNext);
-          var idxElse = eelse == null ? idxNext : walk(eelse, idxNext);
-          actions[idxCond] = macro pecan.CoAction.If(function(self:pecan.Co<$tin, $tout>):Bool {
-            return $e{cond.e};
-          }, $v{idxIf}, $v{idxElse});
-          cond.idx;
+          var cfaIf = walk(eif, next);
+          var cfaElse = eelse == null ? next : walk(eelse, next);
+          var cfaCond = push(If, null, [cfaIf, cfaElse]);
+          var cond = walkExpr(cond, cfaCond);
+          cfaCond.expr = macro return $e{cond.e};
+          cond.next;
         case EWhile(cond, body, normalWhile):
-          var idxCond = push(null);
-          var cond = walkExpr(cond, idxCond);
-          loops.push({idxCond: cond.idx, idxNext: idxNext});
-          var idxBody = walk(body, cond.idx);
+          var cfaCond = push(If, null, [next]);
+          var cond = walkExpr(cond, cfaCond);
+          loops.push({cond: cfaCond, next: next});
+          var cfaBody = walk(body, cond.next);
           loops.pop();
-          actions[idxCond] = macro pecan.CoAction.If(function(self:pecan.Co<$tin, $tout>):Bool {
-            return $e{cond.e};
-          }, $v{idxBody}, $v{idxNext});
-          normalWhile ? cond.idx : idxBody;
+          cfaCond.expr = macro return $e{cond.e};
+          cfaCond.next.unshift(cfaBody);
+          cfaBody.prev.push(cfaCond);
+          normalWhile ? cond.next : cfaBody;
         case EBreak if (loops.length > 0):
-          loops[loops.length - 1].idxNext;
+          loops[loops.length - 1].next;
         case EContinue if (loops.length > 0):
-          loops[loops.length - 1].idxCond;
+          loops[loops.length - 1].cond;
         case EBreak | EContinue:
           Context.error("break and continue are only allowed in loops", e.pos);
         case _:
-          var idxSync = push(null);
-          var res = walkExpr(e, idxSync);
-          actions[idxSync] = macro pecan.CoAction.Sync(function(self:pecan.Co<$tin, $tout>):Void {
-            $e{res.e};
-          }, $v{idxNext});
-          res.idx;
+          var cfaSync = push(Sync, null, [next]);
+          var res = walkExpr(e, cfaSync);
+          cfaSync.expr = res.e;
+          res.next;
       });
     }
-    ctx.entryPosition = walk(ctx.block, -1);
+    function mergeBlock(a:Expr, b:Expr):Expr {
+      return (switch [a, b] {
+        case [{expr: EBlock(as)}, {expr: EBlock(bs), pos: pos}]:
+          {expr: EBlock(as.concat(bs)), pos: pos};
+        case [_, {expr: EBlock(bs), pos: pos}]:
+          {expr: EBlock([a].concat(bs)), pos: pos};
+        case [{expr: EBlock(as)}, {expr: _, pos: pos}]:
+          {expr: EBlock(as.concat([b])), pos: pos};
+        case [_, {expr: _, pos: pos}]:
+          {expr: EBlock([a, b]), pos: pos};
+      });
+    }
+    function optimise(c:CFA):CFA {
+      if (c == null || c.idx == -2)
+        return c;
+      c.idx = -2;
+      return (switch (c) {
+        case {kind: Sync, next: [null]}:
+          c.next = c.next.map(optimise);
+          c;
+        case {kind: Sync, next: [next = {prev: [_]}]}:
+          next.expr = mergeBlock(c.expr, next.expr);
+          next.prev = c.prev;
+          for (p in c.prev)
+            p.next = p.next.map(n -> n == c ? next : n);
+          optimise(next);
+        case _:
+          c.next = c.next.map(optimise);
+          c;
+      });
+    }
+    var actions:Array<Expr> = [];
+    function finalise(c:CFA):Void {
+      if (c == null || c.idx >= 0)
+        return;
+      c.idx = actions.length;
+      actions.push(null);
+      for (n in c.next)
+        finalise(n);
+      function idx(n:Int):Int {
+        return n >= c.next.length || c.next[n] == null ? -1 : c.next[n].idx;
+      }
+      actions[c.idx] = (switch (c.kind) {
+        case Sync:
+          macro pecan.CoAction.Sync(function(self:pecan.Co<$tin, $tout>):Void {
+            $e{c.expr};
+          }, $v{idx(0)});
+        case Suspend:
+          c.expr == null ? macro pecan.CoAction.Suspend(null, $v{idx(0)}) : macro pecan.CoAction.Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
+            $e{c.expr};
+          }, $v{idx(0)});
+        case If:
+          macro pecan.CoAction.If(function(self:pecan.Co<$tin, $tout>):Bool {
+            $e{c.expr};
+          }, $v{idx(0)}, $v{idx(1)});
+        case Accept:
+          macro pecan.CoAction.Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
+            $e{c.expr};
+          }, $v{idx(0)});
+        case Yield:
+          macro pecan.CoAction.Yield(function(self:pecan.Co<$tin, $tout>):$tout {
+            $e{c.expr};
+          }, $v{idx(0)});
+      });
+    }
+    finalise(optimise(walk(ctx.block, null)));
     ctx.block = macro $a{actions};
     if (debug) {
-      trace(ctx.entryPosition);
       Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
     }
   }
@@ -484,8 +555,6 @@ class Co {
     the @:pecan.suspend metadata.
   **/
   static function checkSuspending(f:Expr):Bool {
-    var tin = ctx.typeInput;
-    var tout = ctx.typeOutput;
     var typed = try Context.typeExpr(macro function(self:pecan.Co<$tin, $tout>) {
       $f;
     }) catch (e:Dynamic) null;
@@ -503,8 +572,6 @@ class Co {
     Builds and returns a factory subtype.
   **/
   static function buildFactory():Expr {
-    var tin = ctx.typeInput;
-    var tout = ctx.typeOutput;
     var varsTypePath = ctx.varsTypePath;
     var factoryTypePath = {name: 'CoFactory$typeCounter', pack: ["pecan", "instances"]};
     var factoryTypeName = factoryTypePath.name;
@@ -519,7 +586,7 @@ class Co {
             ]
           };
           ret;
-        }, $v{ctx.entryPosition});
+        });
       }
     };
     factoryType.pack = factoryTypePath.pack;
@@ -573,10 +640,9 @@ class Co {
     });
   }
 
-  public static function co(block:Expr, ?tin:Expr, ?tout:Expr):Expr {
+  public static function co(block:Expr, ?tinE:Expr, ?toutE:Expr):Expr {
     ctx = {
       block: block,
-      entryPosition: 0,
       pos: block.pos,
       localCounter: 0,
       varsTypePath: null,
@@ -585,10 +651,12 @@ class Co {
       arguments: [],
       topScope: [],
       scopes: null,
-      typeInput: parseIOType(tin),
-      typeOutput: parseIOType(tout)
+      typeInput: parseIOType(tinE),
+      typeOutput: parseIOType(toutE)
     };
     ctx.scopes = [ctx.topScope];
+    tin = ctx.typeInput;
+    tout = ctx.typeOutput;
 
     initVariableClass();
     processArguments();
@@ -599,6 +667,8 @@ class Co {
 
     typeCounter++;
     ctx = null;
+    tin = null;
+    tout = null;
     return factory;
   }
 
@@ -608,4 +678,20 @@ class Co {
     debug = false;
     return ret;
   }
+}
+
+typedef CFA = {
+  kind:CFAKind,
+  expr:Null<Expr>,
+  next:Array<CFA>,
+  prev:Array<CFA>,
+  idx:Int
+};
+
+enum CFAKind {
+  Sync;
+  Suspend;
+  If;
+  Accept;
+  Yield;
 }

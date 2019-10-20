@@ -9,10 +9,9 @@ class Co<TIn, TOut> {
   public var position:Int = 0;
   public var state:CoState<TIn, TOut> = Ready;
 
-  public function new(actions:Array<CoAction<TIn, TOut>>, vars:CoVariables, position:Int) {
+  public function new(actions:Array<CoAction<TIn, TOut>>, vars:CoVariables) {
     this.actions = actions;
     this.vars = vars;
-    this.position = position;
   }
 
   function checkEnd():Bool {
@@ -34,7 +33,7 @@ class Co<TIn, TOut> {
           f(this);
           next;
         case Suspend(f, next):
-          if (f == null || f(this, wakeup))
+          if (f(this, wakeup))
             suspend();
           next;
         case If(cond, nextIf, nextElse):
