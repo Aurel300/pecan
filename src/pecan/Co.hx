@@ -5,79 +5,17 @@ class Co<TIn, TOut> {
 
   public final actions:Array<CoAction<TIn, TOut>>;
   public final vars:CoVariables;
-  public var position:Array<Int> = [0];
+  public var position:Int = 0;
   public var state:CoState<TIn, TOut> = Ready;
 
-  public function new(actions:Array<CoAction<TIn, TOut>>, vars:CoVariables) {
+  public function new(actions:Array<CoAction<TIn, TOut>>, vars:CoVariables, position:Int) {
     this.actions = actions;
     this.vars = vars;
-  }
-
-  function getActionStack():Array<CoActionStack<TIn, TOut>> {
-    var last:CoActionStack<TIn, TOut> = null;
-    var stack = [last = {actions: actions}];
-    for (index in position) {
-      var indexUsed = false;
-      while (!indexUsed) {
-        indexUsed = true;
-        if (last.actions != null) {
-          stack.push(last = {action: last.actions[index]});
-        } else if (last.action != null) {
-          switch (last.action.kind) {
-            case Block(b) | While(_, b, _):
-              indexUsed = false;
-              stack.push(last = {actions: b});
-            case If(_, eif, eelse):
-              stack.push(last = {actions: index == 0 ? eif : eelse});
-            case _:
-              throw "!";
-          }
-        }
-      }
-    }
-    return stack;
-  }
-
-  function getCurrentAction():CoAction<TIn, TOut> {
-    var stack = getActionStack();
-    return stack[stack.length - 1].action;
-  }
-
-  function advanceAction():Bool {
-    var stack = getActionStack();
-    stack.pop(); // discard leaf action
-    var work = true;
-    while (work && position.length > 0 && stack.length > 0) {
-      work = false;
-      var top = stack[stack.length - 1];
-      if (top.actions == null)
-        throw "!";
-      if (++position[position.length - 1] >= top.actions.length) {
-        position.pop();
-        stack.pop(); // discard actions
-        if (stack.length > 0)
-          switch (stack[stack.length - 1].action.kind) {
-            case If(_, _, _):
-              position.pop(); // discard if/else branch index
-            case While(cond, _, _):
-              if (cond(this)) {
-                //position.push(0);
-                return true;
-              }
-            case _:
-          }
-        stack.pop(); // discard action
-        work = true;
-      }
-    }
-    if (position.length == 0 || stack.length == 0) {
-      return false;
-    }
-    return true;
+    this.position = position;
   }
 
   function checkEnd():Bool {
-    if (actions.length == 0 || position.length == 0) {
+    if (position < 0 || position >= actions.length) {
       terminate();
       return true;
     }
@@ -89,48 +27,24 @@ class Co<TIn, TOut> {
       return;
     if (checkEnd())
       return;
-    var tickMore = true;
-    while (tickMore) {
-      var nextAction = true;
-      var current = getCurrentAction();
-      // trace("ticking", position, current);
-      tickMore = (switch (current.kind) {
-        case Sync(f): f(this); state != Suspended && state != Terminated;
-        case Suspend(f): if (f == null || f(this, wakeup)) suspend(); state != Suspended && state != Terminated;
-        case Block(_):
-          nextAction = false;
-          position.push(0);
-          true;
-        case If(cond, _, eelse):
-          if (cond(this)) {
-            nextAction = false;
-            position.push(0);
-            position.push(0);
-          } else if (eelse != null) {
-            nextAction = false;
-            position.push(1);
-            position.push(0);
-          }
-          true;
-        case While(cond, _, normalWhile):
-          if (!normalWhile || cond(this)) {
-            nextAction = false;
-            position.push(0);
-          }
-          true;
-        case Accept(f):
+    while (state.match(Ready) && position >= 0 && position < actions.length) {
+      position = (switch (actions[position]) {
+        case Sync(f, next):
+          f(this);
+          next;
+        case Suspend(f, next):
+          if (f == null || f(this, wakeup))
+            suspend();
+          next;
+        case If(cond, nextIf, nextElse):
+          cond(this) ? nextIf : nextElse;
+        case Accept(f, next):
           state = Accepting(f);
-          // the position is advanced in give
-          nextAction = false;
-          false;
-        case Yield(f):
+          next;
+        case Yield(f, next):
           state = Yielding(f);
-          // the position is advanced in take
-          nextAction = false;
-          false;
+          next;
       });
-      if (nextAction && !advanceAction())
-        tickMore = false;
     }
     if (state.match(Ready | Suspended))
       checkEnd();
@@ -156,11 +70,8 @@ class Co<TIn, TOut> {
     switch (state) {
       case Accepting(f):
         f(this, value);
-        if (advanceAction()) {
-          state = Suspended;
-          wakeup();
-        } else
-          state = Terminated;
+        state = Suspended;
+        wakeup();
       case _:
         throw "invalid state - can only give to Co in Accepting state";
     }
@@ -171,20 +82,13 @@ class Co<TIn, TOut> {
     switch (state) {
       case Yielding(f):
         var ret = f(this);
-        if (advanceAction()) {
-          state = Suspended;
-          wakeup();
-        } else
-          state = Terminated;
+        state = Suspended;
+        wakeup();
         return ret;
       case _:
         throw 'invalid state - can only take from Co in Yielding state (is $state)';
         //throw "invalid state - can only take from Co in Yielding state";
     }
-  }
-
-  public function toString():String {
-    return "co\n" + actions.map(a -> a.toString()).join("\n");
   }
 }
 
@@ -196,5 +100,3 @@ enum CoState<TIn, TOut> {
   Accepting(_:(self:Co<TIn, TOut>, value:TIn) -> Void);
   Yielding(_:(self:Co<TIn, TOut>) -> TOut);
 }
-
-typedef CoActionStack<TIn, TOut> = {?actions:Array<CoAction<TIn, TOut>>, ?action:CoAction<TIn, TOut>};

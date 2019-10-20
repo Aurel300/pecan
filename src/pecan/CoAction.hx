@@ -1,5 +1,6 @@
 package pecan;
 
+/*
 class CoAction<TIn, TOut> {
   public final kind:CoActionKind<TIn, TOut>;
   public final pos:haxe.PosInfos;
@@ -10,6 +11,7 @@ class CoAction<TIn, TOut> {
   }
 
   public function toString():String {
+    return "todo";
     function indent(s:String):String {
       return s.split("\n").map(l -> '  $l').join("\n");
     }
@@ -29,13 +31,12 @@ class CoAction<TIn, TOut> {
     };
   }
 }
+*/
 
-enum CoActionKind<TIn, TOut> {
-  Sync(_:(self:Co<TIn, TOut>) -> Void);
-  Suspend(?_:(self:Co<TIn, TOut>, wakeup:() -> Void) -> Bool);
-  Block(_:Array<CoAction<TIn, TOut>>);
-  If(cond:(self:Co<TIn, TOut>) -> Bool, eif:Array<CoAction<TIn, TOut>>, ?eelse:Array<CoAction<TIn, TOut>>);
-  While(cond:(self:Co<TIn, TOut>) -> Bool, _:Array<CoAction<TIn, TOut>>, normalWhile:Bool);
-  Accept(_:(self:Co<TIn, TOut>, value:TIn) -> Void);
-  Yield(_:(self:Co<TIn, TOut>) -> TOut);
+enum CoAction<TIn, TOut> {
+  Sync(_:(self:Co<TIn, TOut>) -> Void, next:Int);
+  Suspend(?_:(self:Co<TIn, TOut>, wakeup:() -> Void) -> Bool, next:Int);
+  If(cond:(self:Co<TIn, TOut>) -> Bool, nextIf:Int, nextElse:Int);
+  Accept(_:(self:Co<TIn, TOut>, value:TIn) -> Void, next:Int);
+  Yield(_:(self:Co<TIn, TOut>) -> TOut, next:Int);
 }
