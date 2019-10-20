@@ -33,7 +33,7 @@ class Co<TIn, TOut> {
           f(this);
           next;
         case Suspend(f, next):
-          if (f(this, wakeup))
+          if (f(this))
             suspend();
           next;
         case If(cond, nextIf, nextElse):

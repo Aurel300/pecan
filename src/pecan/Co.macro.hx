@@ -339,7 +339,7 @@ class Co {
           //if (!allowAccept)
           //  Context.error("invalid location for accept() call", e.pos);
           var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
-          var accept = push(Accept, macro $tmpVarAccess = value, [next]);
+          var accept = push(Accept, macro $tmpVarAccess = _pecan_value, [next]);
           {e: macro $tmpVarAccess, next: accept};
         // expressions which should have been filtered out by now
         case EVars(_) | EFor(_, _) | EWhile(_, _, _) | EReturn(_) | EBreak | EContinue:
@@ -412,7 +412,7 @@ class Co {
           push(Suspend, macro return true, [next]);
         case ECall({expr: EConst(CIdent("suspend"))}, [f]):
           push(Suspend, macro {
-            $f(self, wakeup);
+            $f(self, self.wakeup);
             return true;
           }, [next]);
         case ECall({expr: EConst(CIdent("yield"))}, [expr]):
@@ -429,7 +429,7 @@ class Co {
             ret.e;
           } ];
           args.push(macro self);
-          args.push(macro wakeup);
+          args.push(macro self.wakeup);
           call.expr = macro return $f($a{args});
           next;
         // optimised variants
@@ -526,7 +526,7 @@ class Co {
             $e{c.expr};
           }, $v{idx(0)});
         case Suspend:
-          c.expr == null ? macro pecan.CoAction.Suspend(null, $v{idx(0)}) : macro pecan.CoAction.Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
+          macro pecan.CoAction.Suspend(function(self:pecan.Co<$tin, $tout>):Bool {
             $e{c.expr};
           }, $v{idx(0)});
         case If:
@@ -534,7 +534,7 @@ class Co {
             $e{c.expr};
           }, $v{idx(0)}, $v{idx(1)});
         case Accept:
-          macro pecan.CoAction.Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
+          macro pecan.CoAction.Accept(function(self:pecan.Co<$tin, $tout>, _pecan_value:$tin):Void {
             $e{c.expr};
           }, $v{idx(0)});
         case Yield:

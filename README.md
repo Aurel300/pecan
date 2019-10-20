@@ -183,10 +183,10 @@ Stop executing actions immediately (when called from within the coroutine), set 
 
 The implementations for `pecan` coroutines consists of two separate parts: [the macro `pecan.Co.co`](src/pecan/Co.macro.hx), which transforms a regular Haxe code block to an array of actions; and [the runtime `pecan.Co`](src/pecan/Co.hx), which executes the actions.
 
-At runtime, coroutines are represented as arrays of `pecan.CoAction`. The various different kinds of actions are expressed with the `enum` `pecan.CoAction.CoActionKind`:
+At runtime, coroutines are represented as arrays of `pecan.CoAction`. This `enum` represents the various kinds of actions:
 
  - `Sync(f, next)` - a synchronous call; `f` is called and the instruction pointer moves to `next`.
- - `Suspend(?f, next)` - a potentially suspending call. If the call to `f` returns `true`, the coroutine is suspended and can be waken up by calling the wakeup callback (given as an argument to `f`) later. If `f` is `null`, the coroutine is always suspended. Once the coroutine is woken up, the instruction pointer moves to `next`.
+ - `Suspend(f, next)` - a potentially suspending call. If the call to `f` returns `true`, the coroutine is suspended and can be waken up by calling `wakeup` later. Once the coroutine is woken up, the instruction pointer moves to `next`.
  - `If(cond, nextIf, nextElse)` - a conditional; `f` is called and the instruction pointer moves to `nextIf` or `nextElse`, depending on the result of the call.
  - `Accept(f, next)` - switch to `Accepting` state and call `f` once a value is accepted (given to the coroutine with a `give` call). Once the coroutine is given a value, the instruction pointer moves to `next`.
  - `Yield(f, next)` - switch to `Yielding` state and call `f` when a value is taken from the coroutine (with a `take` call). Once a value is taken from the coroutine, the instruction pointer moves to `next`.
