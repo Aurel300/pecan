@@ -77,6 +77,7 @@ typedef ProcessContext = {
 };
 
 class Co {
+  static var debug = false;
   static var typeCounter = 0;
   static var ctx:ProcessContext;
 
@@ -305,6 +306,10 @@ class Co {
     Context.defineType(varsType);
   }
 
+  /**
+    Converts a code block to a valid `Co` construction.
+    Performs CFA to translate nested blocks into a single array of `CoAction`s.
+  **/
   static function convert():Void {
     var actions:Array<Expr> = [];
     function push(action:Expr):Int {
@@ -332,51 +337,60 @@ class Co {
           }, $v{idxNext}));
           {e: macro $tmpVarAccess, idx: acceptIdx};
         // expressions which should have been filtered out by now
-        case EFor(_, _):
+        case EVars(_) | EFor(_, _) | EWhile(_, _, _) | EReturn(_) | EBreak | EContinue:
           Context.error("unexpected", e.pos);
-        // normal expressions
-        case EConst(_):
+        // unmapped expressions
+        case EConst(_) | EFunction(_, _) | ESwitch(_, _, _) | EUntyped(_) | EDisplay(_, _) | EDisplayNew(_):
           {e: e, idx: idxNext};
-        case EArray(e1, e2):
-          var e1 = walkExpr(e1, idxNext);
-          var e2 = walkExpr(e2, e1.idx);
-          {e: {expr: EArray(e1.e, e2.e), pos: e.pos}, idx: e2.idx};
-        case EBinop(op, e1, e2): // TODO: order of evaluation? short circuiting?
-          var e1 = walkExpr(e1, idxNext);
-          var e2 = walkExpr(e2, e1.idx);
-          {e: {expr: EBinop(op, e1.e, e2.e), pos: e.pos}, idx: e2.idx};
-        case EField(e1, field):
-          var e1 = walkExpr(e1, idxNext);
-          {e: {expr: EField(e1.e, field), pos: e.pos}, idx: e1.idx};
-        case EParenthesis(e1):
-          var e1 = walkExpr(e1, idxNext);
-          {e: {expr: EParenthesis(e1.e), pos: e.pos}, idx: e1.idx};
-
-        case EArrayDecl(values):
-          var values = values.map(sub);
+        // normal expressions
+        case EArray(sub(_) => e1, sub(_) => e2):
+          {e: {expr: EArray(e1, e2), pos: e.pos}, idx: idxNext};
+        //case EBinop(OpBoolAnd, e1, e2):
+        case EBinop(op, sub(_) => e1, sub(_) => e2): // TODO: order of evaluation? short circuiting?
+          {e: {expr: EBinop(op, e1, e2), pos: e.pos}, idx: idxNext};
+        case EField(sub(_) => e1, field):
+          {e: {expr: EField(e1, field), pos: e.pos}, idx: idxNext};
+        case EParenthesis(sub(_) => e1):
+          {e: {expr: EParenthesis(e1), pos: e.pos}, idx: idxNext};
+        case EObjectDecl(fields):
+          var fields = fields.map(f -> {
+            expr: sub(f.expr),
+            field: f.field,
+            quotes: f.quotes
+          });
+          {e: {expr: EObjectDecl(fields), pos: e.pos}, idx: idxNext};
+        case EArrayDecl(_.map(sub) => values):
           {e: {expr: EArrayDecl(values), pos: e.pos}, idx: idxNext};
         case ECall(e1, params):
           var params = params.map(sub);
           var e1 = sub(e1);
           {e: {expr: ECall(e1, params), pos: e.pos}, idx: idxNext};
-
-        case EUnop(op, postFix, e1):
-          var e1 = sub(e1);
+        case ENew(t, params):
+          var params = params.map(sub);
+          {e: {expr: ENew(t, params), pos: e.pos}, idx: idxNext};
+        case EUnop(op, postFix, sub(_) => e1):
           {e: {expr: EUnop(op, postFix, e1), pos: e.pos}, idx: idxNext};
-
-        case ECast(e1, t):
-          var e1 = sub(e1);
+        case EBlock(es):
+          if (es.length == 0)
+            {e: {expr: EBlock([]), pos: e.pos}, idx: idxNext};
+          else {
+            var es = [ for (ri in 0...es.length) sub(es[es.length - ri - 1]) ];
+            es.reverse();
+            {e: {expr: EBlock(es), pos: e.pos}, idx: idxNext};
+          }
+        case EIf(sub(_) => econd, sub(_) => eif, sub(_) => eelse):
+          // TODO: branch dependencies are always executed
+          {e: {expr: EIf(econd, eif, eelse), pos: e.pos}, idx: idxNext};
+        case EThrow(sub(_) => e1):
+          {e: {expr: EThrow(e1), pos: e.pos}, idx: idxNext};
+        case ECast(sub(_) => e1, t):
           {e: {expr: ECast(e1, t), pos: e.pos}, idx: idxNext};
-
-        case ETernary(e1, e2, e3):
-          var e1 = sub(e1);
-          var e2 = sub(e2);
-          var e3 = sub(e3);
+        case ETernary(sub(_) => e1, sub(_) => e2, sub(_) => e3):
           {e: {expr: ETernary(e1, e2, e3), pos: e.pos}, idx: idxNext};
-        case ECheckType(e1, t):
-          var e1 = sub(e1);
+        case ECheckType(sub(_) => e1, t):
           {e: {expr: ECheckType(e1, t), pos: e.pos}, idx: idxNext};
-
+        case EMeta(s, sub(_) => e1):
+          {e: {expr: EMeta(s, e1), pos: e.pos}, idx: idxNext};
         case _:
           {e: e, idx: idxNext};
           //Context.error('complex expr ${e.expr}', e.pos);
@@ -459,10 +473,16 @@ class Co {
     }
     ctx.entryPosition = walk(ctx.block, -1);
     ctx.block = macro $a{actions};
-    // trace(ctx.entryPosition);
-    // Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
+    if (debug) {
+      trace(ctx.entryPosition);
+      Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
+    }
   }
 
+  /**
+    Checks whether the given expressions resolves to a function marked with
+    the @:pecan.suspend metadata.
+  **/
   static function checkSuspending(f:Expr):Bool {
     var tin = ctx.typeInput;
     var tout = ctx.typeOutput;
@@ -478,106 +498,6 @@ class Co {
         return false;
     }
   }
-
-  /**
-    Converts a code block to a valid `Co` construction.
-  **/
-  /*
-  static function convert():Void {
-    var top:Array<Expr>;
-    var blockStack = [top = []];
-    function sub(f:() -> Void):Array<Expr> {
-      blockStack.push(top = []);
-      f();
-      top = blockStack[blockStack.length - 2];
-      return blockStack.pop();
-    }
-    function flatten(e:Array<Expr>):Array<Expr> {
-      return (switch (e) {
-        case [
-          {
-            expr: ENew({name: "Co", sub: "CoAction", pack: ["pecan"]}, [{expr: ECall({expr: EConst(CIdent("Block"))}, [{expr: EArrayDecl([e])}])}])
-          }
-        ]:
-          [e];
-        case _: e;
-      });
-    }
-    var tin = ctx.typeInput;
-    var tout = ctx.typeOutput;
-    function walkExpr(e:Expr, ?allowAccept:Bool = true):Expr {
-      return (switch (e.expr) {
-        case ECall({expr: EConst(CIdent("accept"))}, []):
-          if (!allowAccept)
-            Context.error("invalid location for accept() call", e.pos);
-          var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
-          top.push(macro new pecan.CoAction(Accept(function(self:pecan.Co<$tin, $tout>, value:$tin):Void {
-            $tmpVarAccess = value;
-          })));
-          macro $tmpVarAccess;
-        case _:
-          ExprTools.map(e, walkExpr.bind(_, allowAccept));
-      });
-    }
-    function walkStatement(e:Expr):Void {
-      function pushSync():Void {
-        top.push(macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void {
-          $e{walkExpr(e)};
-        })));
-      }
-      top.push(switch (e.expr) {
-        case ECall({expr: EConst(CIdent("terminate"))}, []):
-          macro new pecan.CoAction(Sync(function(self:pecan.Co<$tin, $tout>):Void {
-            self.terminate();
-          }));
-        case ECall({expr: EConst(CIdent("suspend"))}, []):
-          macro new pecan.CoAction(Suspend());
-        case ECall({expr: EConst(CIdent("suspend"))}, [f]):
-          macro new pecan.CoAction(Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
-            $f(self, wakeup);
-            return true;
-          }));
-        case ECall({expr: EConst(CIdent("yield"))}, [expr]):
-          macro new pecan.CoAction(Yield(function(self:pecan.Co<$tin, $tout>):$tout {
-            return $e{walkExpr(expr)};
-          }));
-        case ECall(f, args):
-          var typed = try Context.typeExpr(macro function(self:pecan.Co<$tin, $tout>) {
-            $f;
-          }) catch (e:Dynamic) null;
-          if (typed == null)
-            return pushSync();
-          switch (typed.expr) {
-            case TFunction({expr: {expr: TBlock([{expr: TField(_, FStatic(_, _.get().meta.has(":pecan.suspend") => true))}])}}):
-              var args = args.map(walkExpr.bind(_, true));
-              args.push(macro self);
-              args.push(macro wakeup);
-              macro new pecan.CoAction(Suspend(function(self:pecan.Co<$tin, $tout>, wakeup:() -> Void):Bool {
-                return $f($a{args});
-              }));
-            case _:
-              return pushSync();
-          }
-        case EBlock(bs):
-          var sub = macro $a{sub(() -> bs.map(walkStatement))};
-          macro new pecan.CoAction(Block($sub));
-        case EIf(cond, eif, eelse):
-          var subif:Expr = macro $a{flatten(sub(() -> walkStatement(eif)))};
-          var subelse:Expr = macro null;
-          if (eelse != null) subelse = macro $a{flatten(sub(() -> walkStatement(eelse)))};
-          macro new pecan.CoAction(If(function(self:pecan.Co<$tin, $tout>):Bool return $e{walkExpr(cond)}, $subif, $subelse));
-        case EWhile(cond, e, normalWhile):
-          var sub:Expr = macro $a{flatten(sub(() -> walkStatement(e)))};
-          macro new pecan.CoAction(While(function(self:pecan.Co<$tin, $tout>):Bool return $e{walkExpr(cond, false)}, $sub, $v{normalWhile}));
-        case _:
-          return pushSync();
-      });
-    }
-    var converted = sub(() -> walkStatement(ctx.block));
-    ctx.block = macro $a{converted};
-    // Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
-  }
-  */
 
   /**
     Builds and returns a factory subtype.
@@ -680,5 +600,12 @@ class Co {
     typeCounter++;
     ctx = null;
     return factory;
+  }
+
+  public static function coDebug(block:Expr, ?tin:Expr, ?tout:Expr):Expr {
+    debug = true;
+    var ret = co(block, tin, tout);
+    debug = false;
+    return ret;
   }
 }

@@ -2,6 +2,7 @@ package pecan;
 
 class Co<TIn, TOut> {
   public static macro function co(block, tin, tout):Expr {}
+  public static macro function coDebug(block, tin, tout):Expr {}
 
   public final actions:Array<CoAction<TIn, TOut>>;
   public final vars:CoVariables;

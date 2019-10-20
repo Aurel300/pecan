@@ -127,7 +127,7 @@ greeter.give("Haxe");
 greeter.give("pecan"); // outputs Hello, Haxe, from pecan!
 ```
 
-All `accept()` calls within an expression are evaluated first. `true ? accept() : accept()` requires two values, even though only the first one will be used. There are some places which cannot contain an `accept()` call, e.g. the condition of a while loop (TODO).
+All `accept()` calls within an expression are evaluated first. `true ? accept() : accept()` requires two values, even though only the first one will be used.
 
 Similarly, `yield(...)` can be used to provide output from the coroutine:
 
@@ -140,7 +140,7 @@ trace('${languages.take()} is awesome!'); // outputs Haxe is awesome!
 trace('${languages.take()} is awesome!'); // outputs Haxe 4 is awesome!
 ```
 
-A coroutine can both accept inputs and yield outputs, and the types of the two do not have to be the same. Keep in mind that `accept` and `yield` are blocking calls – the coroutine will be suspended until data is given to it or taken from it respectively. Additionally, the expression inside `yield` will not be executed at all until `take()` is called.
+A coroutine can both accept inputs and yield outputs, and the types of the two do not have to be the same. Keep in mind that `accept` and `yield` are blocking calls – the coroutine will be suspended until data is given to it or taken from it respectively. Additionally, the expression inside `yield` will not be executed at all until `take()` is called (except for sub-expressions which are also suspending, so `yield(accept())` will accept, *then* yield).
 
 ### API
 
@@ -178,7 +178,6 @@ Stop executing actions immediately (when called from within the coroutine), set 
 
  - all variable declarations must either have a type hint or an expression
  - `self`, `accept`, `yield`, `suspend`, and `terminate` are "magical" constructs that work as documented, but cannot e.g. be bound with `bind` or treated like proper functions
- - suspending calls generally only work as "statements", not as sub-expressions
 
 ### Internals
 
@@ -186,11 +185,10 @@ The implementations for `pecan` coroutines consists of two separate parts: [the 
 
 At runtime, coroutines are represented as arrays of `pecan.CoAction`. The various different kinds of actions are expressed with the `enum` `pecan.CoAction.CoActionKind`:
 
- - `Sync(f)` - a synchronous call; `f` is called and the action counter is incremented.
- - `Suspend(?f)` - a potentially suspending call. If the call to `f` returns `true`, the coroutine is suspended and can be waken up by calling the wakeup callback (given as an argument to `f`) later. If `f` is `null`, the coroutine is always suspended.
- - `Block(actions)` - a group of sequential sub-`actions`.
- - `If(cond, eif, ?eelse)` - a conditional; `f` is called either the action block `eif` or `eelse` will be entered depending on the return value.
- - `Accept(f)` - switch to `Accepting` state and call `f` once a value is accepted (given to the coroutine with a `give` call).
- - `Yield(f)` - switch to `Yielding` state and call `f` when a value is taken from the coroutine (with a `take` call).
+ - `Sync(f, next)` - a synchronous call; `f` is called and the instruction pointer moves to `next`.
+ - `Suspend(?f, next)` - a potentially suspending call. If the call to `f` returns `true`, the coroutine is suspended and can be waken up by calling the wakeup callback (given as an argument to `f`) later. If `f` is `null`, the coroutine is always suspended. Once the coroutine is woken up, the instruction pointer moves to `next`.
+ - `If(cond, nextIf, nextElse)` - a conditional; `f` is called and the instruction pointer moves to `nextIf` or `nextElse`, depending on the result of the call.
+ - `Accept(f, next)` - switch to `Accepting` state and call `f` once a value is accepted (given to the coroutine with a `give` call). Once the coroutine is given a value, the instruction pointer moves to `next`.
+ - `Yield(f, next)` - switch to `Yielding` state and call `f` when a value is taken from the coroutine (with a `take` call). Once a value is taken from the coroutine, the instruction pointer moves to `next`.
 
 Every coroutine definition results in the definition of a subclass of `pecan.CoVariables`, which contains as fields all the local variables declared in the coroutine. The names of the fields are `_coLocal<number>`; shadowed variables result in separate `_coLocal` fields and are referenced according to proper Haxe scoping rules.

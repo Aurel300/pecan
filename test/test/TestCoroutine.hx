@@ -1,6 +1,7 @@
 package test;
 
 import pecan.Co.co;
+import pecan.Co.coDebug;
 import utest.Async;
 
 class TestCoroutine extends Test {
@@ -379,5 +380,171 @@ class TestCoroutine extends Test {
       eq(a, "foo");
       eq(b, 4);
     }).run(4).tick();
+  }
+
+  function testAccept() {
+    var c = co({
+      var a = accept();
+      eq(a, 0);
+    }, (_ : Int)).run();
+    c.tick();
+    c.give(0);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var a = accept() + accept();
+      eq(a, 3);
+    }, (_ : Int)).run();
+    c.tick();
+    c.give(1);
+    c.give(2);
+    eq(c.state, Terminated);
+
+    var c = co({
+      if (accept()) {
+        eq(1, 1);
+      } else {
+        eq(0, 1);
+      }
+    }, (_ : Bool)).run();
+    c.tick();
+    c.give(true);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var a = accept() ? 1 : 0;
+      eq(1, 1);
+    }, (_ : Bool)).run();
+    c.tick();
+    c.give(true);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var a = true ? accept() : accept();
+      eq(1, 1);
+    }, (_ : Int)).run();
+    c.tick();
+    c.give(1);
+    c.give(2);
+    eq(c.state, Terminated);
+
+    var c = co({
+      yield(accept() + 1);
+    }, (_ : Int), (_ : Int)).run();
+    c.tick();
+    c.give(0);
+    eq(c.take(), 1);
+    eq(c.state, Terminated);
+  }
+
+  /**
+    Test each ExprDef constructor with suspending calls (where possible).
+  **/
+  function testExpressions() {
+    // EConst
+    co(eq(1, 1)).run().tick();
+
+    // EArray
+    var c = co(eq([0, 1, 0][accept()], 1), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+    var c = co(eq(accept()[1], 1), (_ : Array<Int>)).run();
+    c.give([0, 1, 0]);
+    eq(c.state, Terminated);
+
+    // EBinop
+    var c = co(eq(accept() + 2, 3), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+    var c = co(eq(2 + accept(), 3), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+
+    // EBinop short-circuit
+    //var c = co(eq(accept() && accept(), false), (_ : Bool)).run();
+    //c.give(false);
+    //eq(c.state, Terminated);
+
+    // EField
+    var c = co(eq(accept().x, 1), (_ : {x:Int})).run();
+    c.give({x: 1});
+    eq(c.state, Terminated);
+
+    // EParenthesis
+    var c = co(eq((accept()), 1), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+
+    // EObjectDecl
+    var c = co(eq({x: accept()}.x, 1), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+
+    // EArrayDecl
+    var c = co(eq([0, accept(), 0][1], 1), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+
+    // ECall
+    var called = false;
+    var func = x -> { called = true; eq(x, 1); };
+    var c = co(accept()(1), (_ : Int -> Void)).run();
+    c.give(func);
+    eq(called, true);
+    eq(c.state, Terminated);
+    called = false;
+    var c = co(func(accept()), (_ : Int)).run();
+    c.give(1);
+    eq(called, true);
+    eq(c.state, Terminated);
+
+    // ENew
+    var c = co(yield(new DummyObject(accept())), (_ : Int), (_ : test.TestCoroutine.DummyObject)).run();
+    c.give(1);
+    eq(c.take().x, 1);
+    eq(c.state, Terminated);
+
+    // EUnop
+    var c = co(eq(!accept(), true), (_ : Bool)).run();
+    c.give(false);
+    eq(c.state, Terminated);
+
+    // EBlock
+    var reached = false;
+    var c = co(eq({
+      eq(1, 1);
+      reached = true;
+      accept();
+    }, 1), (_ : Int)).run();
+    c.give(1);
+    eq(reached, true);
+    eq(c.state, Terminated);
+
+    // EIf
+    var c = co(eq(if (accept()) {
+      1;
+    } else {
+      0;
+    }, 1), (_ : Bool)).run();
+    c.give(true);
+    eq(c.state, Terminated);
+
+    // ETernary
+    var c = co(eq(accept() ? 1 : 0, 1), (_ : Bool)).run();
+    c.give(true);
+    eq(c.state, Terminated);
+
+    // EMeta
+    var c = co(eq(@foo accept(), 1), (_ : Int)).run();
+    c.give(1);
+    eq(c.state, Terminated);
+  }
+}
+
+class DummyObject {
+  public final x:Int;
+
+  public function new(x:Int) {
+    this.x = x;
   }
 }
