@@ -539,6 +539,63 @@ class TestCoroutine extends Test {
     c.give(1);
     eq(c.state, Terminated);
   }
+
+  /**
+    Test array and map comprehension.
+  **/
+  function testComprehension() {
+    var c = co({
+      var a = [ for (i in 0...3) accept() ];
+      aeq(a, [2, 1, 0]);
+    }, (_ : Int)).run();
+    c.give(2);
+    c.give(1);
+    c.give(0);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var i = 0;
+      var a = [ while (i < 3) { i++; accept(); } ];
+      aeq(a, [2, 1, 0]);
+    }, (_ : Int)).run();
+    c.give(2);
+    c.give(1);
+    c.give(0);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var i = 0;
+      var a = [ while (i++ < 3) accept() ];
+      aeq(a, [2, 1, 0]);
+    }, (_ : Int)).run();
+    c.give(2);
+    c.give(1);
+    c.give(0);
+    eq(c.state, Terminated);
+
+    var c = co({
+      var a = [ for (i in 0...3) i => accept() ];
+      eq(a[0], "a");
+      eq(a[1], "b");
+      eq(a[2], "c");
+    }, (_ : String)).run();
+    c.give("a");
+    c.give("b");
+    c.give("c");
+    eq(c.state, Terminated);
+
+    var c = co({
+      var i = 0;
+      var a = [ while (i++ < 3) i => accept() ];
+      eq(a[1], "a");
+      eq(a[2], "b");
+      eq(a[3], "c");
+    }, (_ : String)).run();
+    c.give("a");
+    c.give("b");
+    c.give("c");
+    eq(c.state, Terminated);
+  }
 }
 
 class DummyObject {

@@ -79,6 +79,8 @@ class Co {
   static var typeCounter = 0;
   static var ctx:ProcessContext;
 
+  static var printer = new haxe.macro.Printer();
+
   static var tin:ComplexType;
   static var tout:ComplexType;
 
@@ -99,12 +101,22 @@ class Co {
         return (switch (e.expr) {
           case ECall({expr: EConst(CIdent("accept"))}, []):
             macro (null : $tin);
+          case EConst(CIdent(ident)):
+            var res = findLocal(e, ident, false);
+            if (res != null) {
+              var tvar = res.type;
+              macro {_v: (null : $tvar)}._v;
+            } else e;
           case _:
             ExprTools.map(e, mapType);
         });
       }
       var mapped = mapType(expr);
-      type = try Context.toComplexType(Context.typeof(mapped)) catch (e:Dynamic) Context.error('cannot infer type for $name - provide a type hint', expr.pos);
+      type = try Context.toComplexType(Context.typeof(mapped)) catch (e:Dynamic) {
+        // if (debug) trace("cannot type", printer.printExpr(mapped), e);
+        Context.error('cannot infer type for $name - provide a type hint', expr.pos);
+      };
+      // if (debug) trace("typed", printer.printExpr(mapped), type);
     }
     if (name != null && !ctx.topScope.exists(name))
       ctx.topScope[name] = [];
@@ -123,7 +135,7 @@ class Co {
     return localVar;
   }
 
-  static function accessLocal(expr:Expr, name:String, write:Bool):Null<Expr> {
+  static function findLocal(expr:Expr, name:String, write:Bool):Null<LocalVar> {
     for (i in 0...ctx.scopes.length) {
       var ri = ctx.scopes.length - i - 1;
       if (ctx.scopes[ri].exists(name)) {
@@ -133,11 +145,18 @@ class Co {
           var localVar = scope[scope.length - 1];
           if (localVar.readOnly && write)
             Context.error('cannot write to read-only variable $name', expr.pos);
-          return accessLocal2(localVar, expr.pos);
+          return localVar;
         }
       }
     }
     return null;
+  }
+
+  static function accessLocal(expr:Expr, name:String, write:Bool):Null<Expr> {
+    var localVar = findLocal(expr, name, write);
+    if (localVar == null)
+      return null;
+    return accessLocal2(localVar, expr.pos);
   }
 
   static function withPos(expr:Expr, ?pos:Position):Expr {
@@ -201,6 +220,7 @@ class Co {
       return ret;
     }
     function walk(e:Expr):Expr {
+      // if (debug) trace("walking", e);
       return {
         pos: e.pos,
         expr: (switch (e.expr) {
@@ -212,6 +232,36 @@ class Co {
               for (c in cases)
                 {expr: c.expr != null ? walk(c.expr) : null, guard: c.guard != null ? walk(c.guard) : null, values: ExprArrayTools.map(c.values, walk)}
             ], edef == null || edef.expr == null ? edef : scoped(() -> walk(edef)));
+          // change map comprehensions into loops
+          case EArrayDecl([loop = {expr: EFor(it, {expr: EBinop(OpArrow, key, val)})}]):
+            var exprs = [];
+            var tmpVarAccess = accessLocal2(declareLocal(e, null, null, e, true), e.pos);
+            exprs.push(macro $tmpVarAccess = new Map());
+            exprs.push(walk({expr: EFor(it, macro $tmpVarAccess.set($e{key}, $e{val})), pos: loop.pos}));
+            exprs.push(tmpVarAccess);
+            EBlock(exprs);
+          case EArrayDecl([loop = {expr: EWhile(it, {expr: EBinop(OpArrow, key, val)}, normalWhile)}]):
+            var exprs = [];
+            var tmpVarAccess = accessLocal2(declareLocal(e, null, null, e, true), e.pos);
+            exprs.push(macro $tmpVarAccess = new Map());
+            exprs.push(walk({expr: EWhile(it, macro $tmpVarAccess.set($e{key}, $e{val}), normalWhile), pos: loop.pos}));
+            exprs.push(tmpVarAccess);
+            EBlock(exprs);
+          // change array comprehensions into loops
+          case EArrayDecl([loop = {expr: EFor(it, body)}]):
+            var exprs = [];
+            var tmpVarAccess = accessLocal2(declareLocal(e, null, null, e, true), e.pos);
+            exprs.push(macro $tmpVarAccess = []);
+            exprs.push(walk({expr: EFor(it, macro $tmpVarAccess.push($e{body})), pos: loop.pos}));
+            exprs.push(tmpVarAccess);
+            EBlock(exprs);
+          case EArrayDecl([loop = {expr: EWhile(it, body, normalWhile)}]):
+            var exprs = [];
+            var tmpVarAccess = accessLocal2(declareLocal(e, null, null, e, true), e.pos);
+            exprs.push(macro $tmpVarAccess = []);
+            exprs.push(walk({expr: EWhile(it, macro $tmpVarAccess.push($e{body}), normalWhile), pos: loop.pos}));
+            exprs.push(tmpVarAccess);
+            EBlock(exprs);
           // change key-value `for` loops to `while` loops
           case EFor({expr: EBinop(OpArrow, kv = {expr: EConst(CIdent(k))}, {expr: EBinop(OpIn, vv = {expr: EConst(CIdent(v))}, it)})}, body):
             var exprs = [];
@@ -259,7 +309,7 @@ class Co {
               var localVar = declareLocal(e, v.name, v.type, v.expr, false);
               if (v.expr != null) {
                 var access = accessLocal2(localVar);
-                exprs.push(macro $access = $e{v.expr});
+                exprs.push(macro $access = $e{walk(v.expr)});
               }
             }
             return macro $b{exprs};
@@ -282,7 +332,9 @@ class Co {
       };
     }
     ctx.block = walk(ctx.block);
-    // Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
+    if (debug) {
+      Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
+    }
   }
 
   /**
@@ -327,6 +379,7 @@ class Co {
       return ret;
     }
     var loops:Array<{cond:CFA, next:CFA}> = [];
+    var walk:(e:Expr, next:CFA) -> CFA = null;
     function walkExpr(e:Expr, next:CFA):{e:Expr, next:CFA} {
       function sub(e:Expr):Expr {
         var ret = walkExpr(e, next);
@@ -336,7 +389,7 @@ class Co {
       return (switch (e.expr) {
         // special calls
         case ECall({expr: EConst(CIdent("accept"))}, []):
-          //if (!allowAccept)
+          // if (!allowAccept)
           //  Context.error("invalid location for accept() call", e.pos);
           var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
           var accept = push(Accept, macro $tmpVarAccess = _pecan_value, [next]);
@@ -350,7 +403,7 @@ class Co {
         // normal expressions
         case EArray(sub(_) => e1, sub(_) => e2):
           {e: {expr: EArray(e1, e2), pos: e.pos}, next: next};
-        //case EBinop(OpBoolAnd, e1, e2):
+        // case EBinop(OpBoolAnd, e1, e2):
         case EBinop(op, sub(_) => e1, sub(_) => e2): // TODO: order of evaluation? short circuiting?
           {e: {expr: EBinop(op, e1, e2), pos: e.pos}, next: next};
         case EField(sub(_) => e1, field):
@@ -379,9 +432,10 @@ class Co {
           if (es.length == 0)
             {e: {expr: EBlock([]), pos: e.pos}, next: next};
           else {
-            var es = [ for (ri in 0...es.length) sub(es[es.length - ri - 1]) ];
-            es.reverse();
-            {e: {expr: EBlock(es), pos: e.pos}, next: next};
+            var last = sub(es[es.length - 1]);
+            for (ri in 1...es.length)
+              next = walk(es[es.length - ri - 1], next);
+            {e: last, next: next};
           }
         case EIf(sub(_) => econd, sub(_) => eif, sub(_) => eelse):
           // TODO: branch dependencies are always executed
@@ -398,10 +452,10 @@ class Co {
           {e: {expr: EMeta(s, e1), pos: e.pos}, next: next};
         case _:
           {e: e, next: next};
-          //Context.error('complex expr ${e.expr}', e.pos);
+          // Context.error('complex expr ${e.expr}', e.pos);
       });
     }
-    function walk(e:Expr, next:CFA):CFA {
+    walk = function (e:Expr, next:CFA):CFA {
       if (e == null)
         return next;
       return (switch (e.expr) {
@@ -423,11 +477,13 @@ class Co {
         case ECall(f, args) if (checkSuspending(f)):
           var call = push(Suspend, null, [next]);
           var next = call;
-          var args = [ for (ri in 0...args.length) {
-            var ret = walkExpr(args[args.length - ri - 1], next);
-            next = ret.next;
-            ret.e;
-          } ];
+          var args = [
+            for (ri in 0...args.length) {
+              var ret = walkExpr(args[args.length - ri - 1], next);
+              next = ret.next;
+              ret.e;
+            }
+          ];
           args.push(macro self);
           args.push(macro self.wakeup);
           call.expr = macro return $f($a{args});
