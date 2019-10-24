@@ -41,6 +41,7 @@ Within the code block, there are some special variables and constructs available
  - `self` - refers to the current instance of `pecan.Co`.
  - `suspend()`, `suspend(f)`, and `terminate()` - see [suspending](#suspending).
  - `accept()` and `yield(<expr>)` - see [I/O](#io).
+ - `label(<string>)` - see [labels](#labels).
 
 ### Suspending
 
@@ -68,7 +69,11 @@ Coroutines can also be terminated completely, which means they cannot be woken u
 
 ### Defining suspending functions
 
-It is possible to declare methods as suspending. These methods must be marked with the `:pecan.suspend` metadata, they must take the coroutine `pecan.Co<...>` and its wakeup function `()->Void` as their last two arguments, and they must return `Bool`, indicating whether or not the coroutine should be suspended following the call.
+It is possible to declare methods as suspending. These methods must:
+
+ - have the `:pecan.suspend` metadata
+ - take the coroutine `pecan.Co<...>` and its wakeup function `()->Void` as their last two arguments
+ - return `Bool`, indicating whether or not the coroutine should be suspended following the call
 
 Functions declared this way can then be called from within coroutines, and they will suspend the coroutine as needed.
 
@@ -142,6 +147,27 @@ trace('${languages.take()} is awesome!'); // outputs Haxe 4 is awesome!
 
 A coroutine can both accept inputs and yield outputs, and the types of the two do not have to be the same. Keep in mind that `accept` and `yield` are blocking calls – the coroutine will be suspended until data is given to it or taken from it respectively. Additionally, the expression inside `yield` will not be executed at all until `take()` is called (except for sub-expressions which are also suspending, so `yield(accept())` will accept, *then* yield).
 
+### Labels
+
+Labels can be declared inside coroutine bodies with the `label(<string>)` syntax. Labels identify positions in the coroutine code that can be jumped to with a `goto` call.
+  
+```haxe
+var weather = co({
+  label("sunny");
+  while (true) yield("It's sunny!");
+  label("rainy");
+  while (true) yield("It's rainy!");
+}, null, (_:String)).run();
+trace(weather.take()); // It's sunny!
+trace(weather.take()); // It's sunny!
+weather.goto("rainy");
+trace(weather.take()); // It's rainy!
+weather.goto("sunny");
+trace(weather.take()); // It's sunny!
+```
+
+Label names must be a constant string expression.
+
 ### API
 
 `pecan.Co<TIn, TOut>` is the type of a coroutine, as created by the `pecan.Co.co` expression macro. `TIn` is the input type, `TOut` is the output type - `Void` is used for no input or no output. A coroutine exists in one of these states (`pecan.Co.CoState`):
@@ -174,10 +200,14 @@ Stop executing actions immediately (when called from within the coroutine), set 
 
 `tick`, then if the coroutine is in a `Yielding` state, return the emitted value.
 
+#### `public static function goto(label:String):Void`
+
+Move the coroutine to the given label, then `tick`.
+
 ### Limitations
 
  - all variable declarations must either have a type hint or an expression
- - `self`, `accept`, `yield`, `suspend`, and `terminate` are "magical" constructs that work as documented, but cannot e.g. be bound with `bind` or treated like proper functions
+ - `self`, `accept`, `yield`, `suspend`, and `terminate` are "magic" constructs that work as documented, but cannot e.g. be bound with `bind` or treated like proper functions
 
 ### Internals
 
