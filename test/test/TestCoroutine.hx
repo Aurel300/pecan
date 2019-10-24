@@ -596,6 +596,30 @@ class TestCoroutine extends Test {
     c.give("c");
     eq(c.state, Terminated);
   }
+
+  /**
+    Test labels and goto.
+  **/
+  function testLabels() {
+    var c = co({
+      label("giveA");
+      while (true)
+        yield("A");
+      label("giveB");
+      while (true)
+        yield("B");
+    }, null, (_ : String)).run();
+    eq(c.take(), "A");
+    eq(c.take(), "A");
+    c.goto("giveB");
+    eq(c.take(), "B");
+    eq(c.take(), "B");
+    c.goto("giveA");
+    eq(c.take(), "A");
+    c.goto("giveB");
+    c.goto("giveA");
+    eq(c.take(), "A");
+  }
 }
 
 class DummyObject {

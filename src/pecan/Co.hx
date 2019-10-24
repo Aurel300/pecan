@@ -5,12 +5,14 @@ class Co<TIn, TOut> {
   public static macro function coDebug(block, tin, tout):Expr {}
 
   public final actions:Array<CoAction<TIn, TOut>>;
+  public final labels:Map<String, Int>;
   public final vars:CoVariables;
   public var position:Int = 0;
   public var state:CoState<TIn, TOut> = Ready;
 
-  public function new(actions:Array<CoAction<TIn, TOut>>, vars:CoVariables) {
+  public function new(actions:Array<CoAction<TIn, TOut>>, labels:Map<String, Int>, vars:CoVariables) {
     this.actions = actions;
+    this.labels = labels;
     this.vars = vars;
   }
 
@@ -89,6 +91,16 @@ class Co<TIn, TOut> {
         throw 'invalid state - can only take from Co in Yielding state (is $state)';
         //throw "invalid state - can only take from Co in Yielding state";
     }
+  }
+
+  public function goto(label:String):Void {
+    if (state == Terminated)
+      throw "invalid state - Co is terminated";
+    if (!labels.exists(label))
+      throw "no such label";
+    position = labels[label];
+    state = Suspended;
+    wakeup();
   }
 }
 

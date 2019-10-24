@@ -43,6 +43,8 @@ typedef ProcessContext = {
   **/
   block:Expr,
 
+  labels:Map<String, Int>,
+
   pos:Position,
 
   /**
@@ -488,12 +490,15 @@ class Co {
           args.push(macro self.wakeup);
           call.expr = macro return $f($a{args});
           next;
+        case ECall({expr: EConst(CIdent("label"))}, [{expr: EConst(CString(label))}]):
+          push(Label(label), null, [next]);
         // optimised variants
-        case EWhile({expr: EConst(CIdent("true"))}, body, _):
-          var cfaBody = walk(body, null);
-          cfaBody.next = [cfaBody, cfaBody];
-          cfaBody.prev.push(cfaBody);
-          cfaBody;
+        // TODO: while (true) optimisation breaks labels
+        //case EWhile({expr: EConst(CIdent("true"))}, body, _):
+        //  var cfaBody = walk(body, null);
+        //  cfaBody.next = [cfaBody, cfaBody];
+        //  cfaBody.prev.push(cfaBody);
+        //  cfaBody;
         case EIf({expr: EConst(CIdent("true"))}, eif, _):
           walk(eif, next);
         case EIf({expr: EConst(CIdent("false"))}, _, eelse):
@@ -566,15 +571,21 @@ class Co {
       });
     }
     var actions:Array<Expr> = [];
-    function finalise(c:CFA):Void {
-      if (c == null || c.idx >= 0)
-        return;
+    var labels:Map<String, Int> = [];
+    function finalise(c:CFA):Int {
+      if (c == null)
+        return -1;
+      if (c.idx >= 0)
+        return c.idx;
       c.idx = actions.length;
-      actions.push(null);
-      for (n in c.next)
-        finalise(n);
       function idx(n:Int):Int {
-        return n >= c.next.length || c.next[n] == null ? -1 : c.next[n].idx;
+        return n >= c.next.length ? -1 : finalise(c.next[n]);
+      }
+      switch (c.kind) {
+        case Label(label):
+          labels[label] = c.idx = finalise(c.next[0]);
+        case _:
+          actions.push(null);
       }
       actions[c.idx] = (switch (c.kind) {
         case Sync:
@@ -597,10 +608,14 @@ class Co {
           macro pecan.CoAction.Yield(function(self:pecan.Co<$tin, $tout>):$tout {
             $e{c.expr};
           }, $v{idx(0)});
+        case Label(_):
+          return c.idx;
       });
+      return c.idx;
     }
     finalise(optimise(walk(ctx.block, null)));
     ctx.block = macro $a{actions};
+    ctx.labels = labels;
     if (debug) {
       Sys.println(new haxe.macro.Printer().printExpr(ctx.block));
     }
@@ -631,9 +646,10 @@ class Co {
     var varsTypePath = ctx.varsTypePath;
     var factoryTypePath = {name: 'CoFactory$typeCounter', pack: ["pecan", "instances"]};
     var factoryTypeName = factoryTypePath.name;
+    var labelsExpr = [ for (label => idx in ctx.labels) macro $v{label} => $v{idx} ];
     var factoryType = macro class $factoryTypeName extends pecan.CoFactory<$tin, $tout> {
       public function new(actions:Array<pecan.CoAction<$tin, $tout>>) {
-        super(actions, args -> {
+        super(actions, $a{labelsExpr}, args -> {
           var ret = new $varsTypePath();
           $b{
             [
@@ -699,6 +715,7 @@ class Co {
   public static function co(block:Expr, ?tinE:Expr, ?toutE:Expr):Expr {
     ctx = {
       block: block,
+      labels: null,
       pos: block.pos,
       localCounter: 0,
       varsTypePath: null,
@@ -750,4 +767,5 @@ enum CFAKind {
   If;
   Accept;
   Yield;
+  Label(label:String);
 }
