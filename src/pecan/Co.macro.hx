@@ -557,16 +557,21 @@ class Co {
       c.idx = -2;
       return (switch (c) {
         case {kind: Sync, next: [null]}:
-          c.next = c.next.map(optimise);
           c;
-        case {kind: Sync, next: [next = {prev: [_]}]}:
-          next.expr = mergeBlock(c.expr, next.expr);
-          next.prev = c.prev;
-          for (p in c.prev)
-            p.next = p.next.map(n -> n == c ? next : n);
-          optimise(next);
+        case {kind: Sync, next: [next = {kind: Sync, prev: [np]}]}:
+          if (c == np) {
+            next.expr = mergeBlock(c.expr, next.expr);
+            next.prev = c.prev.copy();
+            for (p in c.prev)
+              p.next = p.next.map(n -> n == c ? next : n);
+            optimise(next);
+          } else {
+            c;
+          }
         case _:
-          c.next = c.next.map(optimise);
+          for (n in c.next) {
+            optimise(n);
+          }
           c;
       });
     }
@@ -705,6 +710,7 @@ class Co {
     Parses an expr like `(_ : Type)` to a ComplexType.
   **/
   static function parseIOType(e:Expr):ComplexType {
+    if (e == null) return (macro : Void);
     return (switch (e) {
       case {expr: ECheckType(_, t) | EParenthesis({expr: ECheckType(_, t)})}: t;
       case macro null: macro:Void;
