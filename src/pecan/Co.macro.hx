@@ -7,6 +7,7 @@ import haxe.macro.Type;
 import haxe.macro.TypedExprTools;
 
 using haxe.macro.MacroStringTools;
+using StringTools;
 
 typedef LocalVar = {
   /**
@@ -103,12 +104,19 @@ class Co {
         return (switch (e.expr) {
           case ECall({expr: EConst(CIdent("accept"))}, []):
             macro (null : $tin);
+          case ECall(f, args) if (checkSpecial(f) == Accept):
+            macro (null : $tin);
           case EConst(CIdent(ident)):
             var res = findLocal(e, ident, false);
             if (res != null) {
               var tvar = res.type;
               macro {_v: (null : $tvar)}._v;
             } else e;
+          case EFor({expr: EBinop(OpArrow, k, {expr: EBinop(OpIn, v, it)})}, body):
+            {expr: EFor({expr: EBinop(OpArrow, k, {expr: EBinop(OpIn, v, mapType(it)), pos: e.pos}), pos: e.pos}, mapType(body)), pos: e.pos};
+          case EField({expr: EParenthesis({expr: ECheckType({expr: ECast({expr: EField({expr: EConst(CIdent("self"))}, "vars")}, null)}, _)})}, n) if (n.startsWith("_coLocal")):
+            var tvar = ctx.locals[Std.parseInt(n.substr("_coLocal".length))].type;
+            macro (null : $tvar);
           case _:
             ExprTools.map(e, mapType);
         });
@@ -286,7 +294,7 @@ class Co {
             });
             return macro $b{exprs};
           // change `for` loops to `while` loops
-          case EFor({expr: EBinop(OpIn, ev = {expr: EConst(CIdent(v))}, it)}, body):
+          case EFor({expr: EBinop(OpIn, ev = {expr: EConst(CIdent(v))}, walk(_) => it)}, body):
             var exprs = [];
             try {
               if (!Context.unify(Context.typeof(it), Context.resolveType(macro:Iterator<Dynamic>, Context.currentPos())))
@@ -396,6 +404,23 @@ class Co {
           var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
           var accept = push(Accept, macro $tmpVarAccess = _pecan_value, [next]);
           {e: macro $tmpVarAccess, next: accept};
+        case ECall(f, args) if (checkSpecial(f) == Accept):
+          var tmpVarAccess = accessLocal2(declareLocal(e, null, tin, null, true), e.pos);
+          var accept = push(Accept, macro $tmpVarAccess = _pecan_value, [next]);
+          var call = push(Sync, null, [accept]);
+          var next = call;
+          var args = [
+            for (ri in 0...args.length) {
+              var ret = walkExpr(args[args.length - ri - 1], next);
+              next = ret.next;
+              ret.e;
+            }
+          ];
+          args.reverse();
+          args.push(macro self);
+          args.push(macro self.give);
+          call.expr = macro $f($a{args});
+          {e: macro $tmpVarAccess, next: call};
         // expressions which should have been filtered out by now
         case EVars(_) | EFor(_, _) | EWhile(_, _, _) | EReturn(_) | EBreak | EContinue:
           Context.error("unexpected", e.pos);
@@ -476,22 +501,46 @@ class Co {
           var expr = walkExpr(expr, yield);
           yield.expr = macro return $e{expr.e};
           expr.next;
-        case ECall(f, args) if (checkSuspending(f)):
-          var call = push(Suspend, null, [next]);
-          var next = call;
-          var args = [
-            for (ri in 0...args.length) {
-              var ret = walkExpr(args[args.length - ri - 1], next);
-              next = ret.next;
-              ret.e;
-            }
-          ];
-          args.push(macro self);
-          args.push(macro self.wakeup);
-          call.expr = macro return $f($a{args});
-          next;
         case ECall({expr: EConst(CIdent("label"))}, [{expr: EConst(CString(label))}]):
           push(Label(label), null, [next]);
+        case ECall(f, args):
+          switch (checkSpecial(f)) {
+            case Suspend:
+              var call = push(Suspend, null, [next]);
+              var next = call;
+              var args = [
+                for (ri in 0...args.length) {
+                  var ret = walkExpr(args[args.length - ri - 1], next);
+                  next = ret.next;
+                  ret.e;
+                }
+              ];
+              args.reverse();
+              args.push(macro self);
+              args.push(macro self.wakeup);
+              call.expr = macro return $f($a{args});
+              next;
+            case Accept:
+              var call = push(Accept, null, [next]);
+              var next = call;
+              var args = [
+                for (ri in 0...args.length) {
+                  var ret = walkExpr(args[args.length - ri - 1], next);
+                  next = ret.next;
+                  ret.e;
+                }
+              ];
+              args.reverse();
+              args.push(macro self);
+              args.push(macro self.give);
+              call.expr = macro return $f($a{args});
+              next;
+            case None:
+              var cfaSync = push(Sync, null, [next]);
+              var res = walkExpr(e, cfaSync);
+              cfaSync.expr = res.e;
+              res.next;
+          }
         // optimised variants
         // TODO: while (true) optimisation breaks labels
         //case EWhile({expr: EConst(CIdent("true"))}, body, _):
@@ -627,20 +676,22 @@ class Co {
   }
 
   /**
-    Checks whether the given expressions resolves to a function marked with
-    the @:pecan.suspend metadata.
+    Checks whether the given expression resolves to a function marked with
+    the @:pecan.suspend or @:pecan.accept metadata.
   **/
-  static function checkSuspending(f:Expr):Bool {
+  static function checkSpecial(f:Expr):CoSpecial {
     var typed = try Context.typeExpr(macro function(self:pecan.Co<$tin, $tout>) {
       $f;
     }) catch (e:Dynamic) null;
     if (typed == null)
-      return false;
+      return None;
     switch (typed.expr) {
       case TFunction({expr: {expr: TBlock([{expr: TField(_, FStatic(_, _.get().meta.has(":pecan.suspend") => true))}])}}):
-        return true;
+        return Suspend;
+      case TFunction({expr: {expr: TBlock([{expr: TField(_, FStatic(_, _.get().meta.has(":pecan.accept") => true))}])}}):
+        return Accept;
       case _:
-        return false;
+        return None;
     }
   }
 
@@ -774,4 +825,10 @@ enum CFAKind {
   Accept;
   Yield;
   Label(label:String);
+}
+
+enum CoSpecial {
+  None;
+  Suspend;
+  Accept;
 }
