@@ -6,76 +6,10 @@ import haxe.macro.ExprTools;
 import haxe.macro.Type;
 import haxe.macro.TypedExprTools;
 
+import pecan.internal.*;
+
 using haxe.macro.MacroStringTools;
 using StringTools;
-
-typedef LocalVar = {
-  /**
-    Name of the original variable.
-  **/
-  name:String,
-
-  type:ComplexType,
-
-  /**
-    Position where the original variable was declared.
-  **/
-  declaredPos:Position,
-
-  /**
-    Name of the renamed variable, field on the variables class.
-  **/
-  renamed:String,
-
-  /**
-    `false` if the variable cannot be written to in user code, e.g. when it is
-    actually a loop variable.
-  **/
-  readOnly:Bool,
-
-  argOptional:Bool
-};
-
-typedef LocalScope = Map<String, Array<LocalVar>>;
-
-typedef ProcessContext = {
-  /**
-    The AST representation, changed with each processing stage.
-  **/
-  block:Expr,
-
-  labels:Map<String, Int>,
-
-  pos:Position,
-
-  /**
-    Counter for declaring coroutine-local variables.
-  **/
-  localCounter:Int,
-
-  topScope:LocalScope,
-  scopes:Array<LocalScope>,
-
-  /**
-    Type path of the class holding the coroutine-local variables.
-  **/
-  varsTypePath:TypePath,
-
-  varsComplexType:ComplexType,
-
-  /**
-    All locals declared for the coroutine.
-  **/
-  locals:Array<LocalVar>,
-
-  /**
-    Argument variables passed during `run`. A subset of locals.
-  **/
-  arguments:Array<LocalVar>,
-
-  typeInput:ComplexType,
-  typeOutput:ComplexType
-};
 
 class Co {
   static var debug = false;
@@ -373,9 +307,9 @@ class Co {
     Performs CFA to translate nested blocks into a single array of `CoAction`s.
   **/
   static function convert():Void {
-    var cfa:Array<CFA> = [];
-    function push(kind:CFAKind, expr:Null<Expr>, next:Array<CFA>):CFA {
-      var ret:CFA = {
+    var Cfg:Array<Cfg> = [];
+    function push(kind:CfgKind, expr:Null<Expr>, next:Array<Cfg>):Cfg {
+      var ret:Cfg = {
         kind: kind,
         expr: expr,
         next: next,
@@ -385,12 +319,12 @@ class Co {
       for (n in next)
         if (n != null)
           n.prev.push(ret);
-      cfa.push(ret);
+      Cfg.push(ret);
       return ret;
     }
-    var loops:Array<{cond:CFA, next:CFA}> = [];
-    var walk:(e:Expr, next:CFA) -> CFA = null;
-    function walkExpr(e:Expr, next:CFA):{e:Expr, next:CFA} {
+    var loops:Array<{cond:Cfg, next:Cfg}> = [];
+    var walk:(e:Expr, next:Cfg) -> Cfg = null;
+    function walkExpr(e:Expr, next:Cfg):{e:Expr, next:Cfg} {
       function sub(e:Expr):Expr {
         var ret = walkExpr(e, next);
         next = ret.next;
@@ -482,7 +416,7 @@ class Co {
           // Context.error('complex expr ${e.expr}', e.pos);
       });
     }
-    walk = function (e:Expr, next:CFA):CFA {
+    walk = function (e:Expr, next:Cfg):Cfg {
       if (e == null)
         return next;
       return (switch (e.expr) {
@@ -536,18 +470,18 @@ class Co {
               call.expr = macro return $f($a{args});
               next;
             case None:
-              var cfaSync = push(Sync, null, [next]);
-              var res = walkExpr(e, cfaSync);
-              cfaSync.expr = res.e;
+              var CfgSync = push(Sync, null, [next]);
+              var res = walkExpr(e, CfgSync);
+              CfgSync.expr = res.e;
               res.next;
           }
         // optimised variants
         // TODO: while (true) optimisation breaks labels
         //case EWhile({expr: EConst(CIdent("true"))}, body, _):
-        //  var cfaBody = walk(body, null);
-        //  cfaBody.next = [cfaBody, cfaBody];
-        //  cfaBody.prev.push(cfaBody);
-        //  cfaBody;
+        //  var CfgBody = walk(body, null);
+        //  CfgBody.next = [CfgBody, CfgBody];
+        //  CfgBody.prev.push(CfgBody);
+        //  CfgBody;
         case EIf({expr: EConst(CIdent("true"))}, eif, _):
           walk(eif, next);
         case EIf({expr: EConst(CIdent("false"))}, _, eelse):
@@ -559,22 +493,22 @@ class Co {
             next = walk(es[es.length - ri - 1], next);
           next;
         case EIf(cond, eif, eelse):
-          var cfaIf = walk(eif, next);
-          var cfaElse = eelse == null ? next : walk(eelse, next);
-          var cfaCond = push(If, null, [cfaIf, cfaElse]);
-          var cond = walkExpr(cond, cfaCond);
-          cfaCond.expr = macro return $e{cond.e};
+          var CfgIf = walk(eif, next);
+          var CfgElse = eelse == null ? next : walk(eelse, next);
+          var CfgCond = push(If, null, [CfgIf, CfgElse]);
+          var cond = walkExpr(cond, CfgCond);
+          CfgCond.expr = macro return $e{cond.e};
           cond.next;
         case EWhile(cond, body, normalWhile):
-          var cfaCond = push(If, null, [next]);
-          var cond = walkExpr(cond, cfaCond);
-          loops.push({cond: cfaCond, next: next});
-          var cfaBody = walk(body, cond.next);
+          var CfgCond = push(If, null, [next]);
+          var cond = walkExpr(cond, CfgCond);
+          loops.push({cond: CfgCond, next: next});
+          var CfgBody = walk(body, cond.next);
           loops.pop();
-          cfaCond.expr = macro return $e{cond.e};
-          cfaCond.next.unshift(cfaBody);
-          cfaBody.prev.push(cfaCond);
-          normalWhile ? cond.next : cfaBody;
+          CfgCond.expr = macro return $e{cond.e};
+          CfgCond.next.unshift(CfgBody);
+          CfgBody.prev.push(CfgCond);
+          normalWhile ? cond.next : CfgBody;
         case EBreak if (loops.length > 0):
           loops[loops.length - 1].next;
         case EContinue if (loops.length > 0):
@@ -582,9 +516,9 @@ class Co {
         case EBreak | EContinue:
           Context.error("break and continue are only allowed in loops", e.pos);
         case _:
-          var cfaSync = push(Sync, null, [next]);
-          var res = walkExpr(e, cfaSync);
-          cfaSync.expr = res.e;
+          var CfgSync = push(Sync, null, [next]);
+          var res = walkExpr(e, CfgSync);
+          CfgSync.expr = res.e;
           res.next;
       });
     }
@@ -600,7 +534,7 @@ class Co {
           {expr: EBlock([a, b]), pos: pos};
       });
     }
-    function optimise(c:CFA):CFA {
+    function optimise(c:Cfg):Cfg {
       if (c == null || c.idx == -2)
         return c;
       c.idx = -2;
@@ -626,7 +560,7 @@ class Co {
     }
     var actions:Array<Expr> = [];
     var labels:Map<String, Int> = [];
-    function finalise(c:CFA):Int {
+    function finalise(c:Cfg):Int {
       if (c == null)
         return -1;
       if (c.idx >= 0)
@@ -808,27 +742,4 @@ class Co {
     debug = false;
     return ret;
   }
-}
-
-typedef CFA = {
-  kind:CFAKind,
-  expr:Null<Expr>,
-  next:Array<CFA>,
-  prev:Array<CFA>,
-  idx:Int
-};
-
-enum CFAKind {
-  Sync;
-  Suspend;
-  If;
-  Accept;
-  Yield;
-  Label(label:String);
-}
-
-enum CoSpecial {
-  None;
-  Suspend;
-  Accept;
 }
