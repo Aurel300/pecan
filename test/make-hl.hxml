@@ -1,4 +1,4 @@
 --library utest
 --library pecan
 --main Main
---interp
+--hl out.hl

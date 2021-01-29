@@ -1,20 +1,16 @@
 # `pecan`
 
-`pecan` is a library for [Haxe](https://github.com/HaxeFoundation/haxe) that provides two features:
-
- - **coroutines** - suspendable functions with serialisable state
- - **event-condition-action** - a system to specify "triggers" for various events (TODO)
+`pecan` is a library for [Haxe](https://github.com/HaxeFoundation/haxe) that provides coroutines -- suspendable functions.
 
 ---
 
  - [Coroutines](#coroutines)
    - [Suspending](#suspending)
-   - [Defining suspending functions](#defining-suspending-functions)
+   - [Defining custom suspending functions](#defining-custom-suspending-functions)
    - [Arguments](#arguments)
    - [I/O](#io)
+   - [Defining custom input functions](#defining-custom-input-functions)
    - [API](#api)
-   - [Limitations](#limitations)
-   - [Internals](#internals)
 
 ## Coroutines
 
@@ -34,12 +30,12 @@ class Main {
 }
 ```
 
-A coroutine differs from a regular function in that a "call" is not a single event, but rather a single instance of a coroutine can exist for a long time. Hence the `co` macro returns a factory `pecan.CoFactory<...>`, which is analogous to a function declaration. The `run` method of a factory can be used to obtain a new instance of the coroutine `pecan.Co<...>`, analogous to a function call.
+A coroutine differs from a regular function in that a "call" is not a single event, but rather a single instance of a coroutine can exist for a long time. Hence the `co` macro returns a factory, which is analogous to a function declaration. The `run` method of a factory can be used to obtain a new instance of the coroutine (with the interface `pecan.ICo<...>`), analogous to a function call.
 
 Within the code block, there are some special variables and constructs available:
 
  - `self` - refers to the current instance of `pecan.Co`.
- - `suspend()`, `suspend(f)`, and `terminate()` - see [suspending](#suspending).
+ - `suspend()`, and `terminate()` - see [suspending](#suspending).
  - `accept()` and `yield(<expr>)` - see [I/O](#io).
  - `label(<string>)` - see [labels](#labels).
 
@@ -61,29 +57,35 @@ c.wakeup();
 // outputs hello Haxe world
 ```
 
-The `suspend` call can optionally take a single argument, which should be a function with the signature `(self:pecan.Co<...>, wakeup:() -> Void) -> Void`.
+A wakeup of the coroutine can be scheduled just before a `suspend` call, for example:
 
-(TODO: this seems a bit useless now, since the `wakeup` call can simply be scheduled immediately before the `suspend` call.)
+```haxe
+co({
+  trace("hello");
+  haxe.Timer.delay(self.wakeup, 1000);
+  suspend();
+  trace("world");
+}).run().tick();
+```
 
 Coroutines can also be terminated completely, which means they cannot be woken up again. This is achieved with the `terminate()` call.
 
-### Defining suspending functions
+### Defining custom suspending functions
 
 It is possible to declare methods as suspending. These methods must:
 
- - have the `:pecan.suspend` metadata
- - take the coroutine `pecan.Co<...>` and its wakeup function `()->Void` as their last two arguments
- - return `Bool`, indicating whether or not the coroutine should be suspended following the call
+ - have the `:pecan.action` metadata
+ - take the coroutine `pecan.ICo<...>` as their last argument, ideally optional
 
-Functions declared this way can then be called from within coroutines, and they will suspend the coroutine as needed.
+Functions declared this way can then be called from within coroutines, with the last argument being replaced by the coroutine instance automatically.
 
-An example to use `haxe.Timer.delay` as a suspending function:
+An example defining `haxe.Timer.delay` as a suspending function:
 
 ```haxe
 class Foobar {
-  @:pecan.suspend public static function delay<T, U>(ms:Int, co:pecan.Co<T, U>, wakeup:()->Void):Bool {
-    haxe.Timer.delay(wakeup, ms);
-    return true;
+  @:pecan.action public static function delay<T, U>(ms:Int, ?co:pecan.ICo<T, U>):Void {
+    haxe.Timer.delay(co.wakeup, ms);
+    co.suspend();
   }
 }
 ```
@@ -110,7 +112,7 @@ greeter.run("Haxe").tick(); // outputs Hello, Haxe!
 greeter.run("world").tick(); // outputs Hello, world!
 ```
 
-Arguments can be optional, in which case they should be prefixed with `?` and have a default value. Any non-optional argument must have a type hint.
+As for regular functions, arguments can be optional.
 
 ### I/O
 
@@ -132,7 +134,7 @@ greeter.give("Haxe");
 greeter.give("pecan"); // outputs Hello, Haxe, from pecan!
 ```
 
-All `accept()` calls within an expression are evaluated first. `true ? accept() : accept()` requires two values, even though only the first one will be used.
+All `accept()` calls within an expression are evaluated before the expression itself. The evaluation order of complex expressions involving calls to `accept()` and other functions may therefore be different than expected. Boolean operators with `accept()` will not short-circuit.
 
 Similarly, `yield(...)` can be used to provide output from the coroutine:
 
@@ -145,7 +147,45 @@ trace('${languages.take()} is awesome!'); // outputs Haxe is awesome!
 trace('${languages.take()} is awesome!'); // outputs Haxe 4 is awesome!
 ```
 
-A coroutine can both accept inputs and yield outputs, and the types of the two do not have to be the same. Keep in mind that `accept` and `yield` are blocking calls – the coroutine will be suspended until data is given to it or taken from it respectively. Additionally, the expression inside `yield` will not be executed at all until `take()` is called (except for sub-expressions which are also suspending, so `yield(accept())` will accept, *then* yield).
+A coroutine can both accept inputs and yield outputs, and the types of the two do not have to be the same. `accept` and `yield` are blocking calls – the coroutine will be suspended until data is given to it or taken from it respectively. Additionally, some part of the expression inside `yield` may not be executed at all until `take()` is called (except for sub-expressions which are also suspending, so `yield(accept())` will accept, *then* yield).
+
+### Defining custom input functions
+
+It is possible to declare methods similar to `accept`. These methods must:
+
+ - have the `:pecan.accept` metadata
+ - take the coroutine `pecan.ICo<...>` as their last argument, ideally optional
+ - take a function `T->Void` as their second-to-last argument, ideally optional
+ - return the same type `T` (but the return value is not used!)
+
+Functions declared this way can then be called from within coroutines, with the last two arguments filled in automatically.
+
+An example defining a delay that eventually returns a `String`:
+
+```haxe
+class Foobar {
+  @:pecan.accept public static function acceptDelay<T, U>(ms:Int, ?ret:String->Void, ?co:pecan.ICo<T, U>):String {
+    haxe.Timer.delay(() -> {
+      ret("foo");
+      co.wakeup();
+    }, ms);
+    co.suspend();
+    return null;
+  }
+}
+```
+
+Then:
+
+```haxe
+co({
+  trace("Hello,");
+  var x = Foobar.acceptDelay(1000);
+  trace(x); // foo
+}).run().tick();
+```
+
+Note that the return type of the method exists solely for type checking purposes. The function should always return `null` (or an appropriate default value for basic types on static targets), and return the real value by calling the function passed as an argument.
 
 ### Labels
 
@@ -170,13 +210,13 @@ Label names must be a constant string expression.
 
 ### API
 
-`pecan.Co<TIn, TOut>` is the type of a coroutine, as created by the `pecan.Co.co` expression macro. `TIn` is the input type, `TOut` is the output type - `Void` is used for no input or no output. A coroutine exists in one of these states (`pecan.Co.CoState`):
+`pecan.ICo<TIn, TOut>` is the interface of a coroutine, as created by the `pecan.Co.co` expression macro. `TIn` is the input type, `TOut` is the output type - `Void` is used for no input or no output. A coroutine exists in one of these states (`pecan.Co.CoState`):
 
  - `Ready` - ready to execute actions, can be invoked to run with `tick`.
  - `Suspended` - (temporarily) suspended, may wake up later to become `Ready`.
  - `Terminated` - no more actions will be executed.
- - `Accepting(...)` - waiting for a value of type `TIn`, can be provided with `give`.
- - `Yielding(...)` - ready to give a value of type `TOut`, can be accepted with `take`.
+ - `Accepting` - waiting for a value of type `TIn`, can be provided with `give`.
+ - `Yielding` - ready to give a value of type `TOut`, can be accepted with `take`.
 
 #### `public static function tick():Void`
 
@@ -203,22 +243,3 @@ Stop executing actions immediately (when called from within the coroutine), set 
 #### `public static function goto(label:String):Void`
 
 Move the coroutine to the given label, then `tick`.
-
-### Limitations
-
- - all variable declarations must either have a type hint or an expression
- - `self`, `accept`, `yield`, `suspend`, and `terminate` are "magic" constructs that work as documented, but cannot e.g. be bound with `bind` or treated like proper functions
-
-### Internals
-
-The implementations for `pecan` coroutines consists of two separate parts: [the macro `pecan.Co.co`](src/pecan/Co.macro.hx), which transforms a regular Haxe code block to an array of actions; and [the runtime `pecan.Co`](src/pecan/Co.hx), which executes the actions.
-
-At runtime, coroutines are represented as arrays of `pecan.CoAction`. This `enum` represents the various kinds of actions:
-
- - `Sync(f, next)` - a synchronous call; `f` is called and the instruction pointer moves to `next`.
- - `Suspend(f, next)` - a potentially suspending call. If the call to `f` returns `true`, the coroutine is suspended and can be waken up by calling `wakeup` later. Once the coroutine is woken up, the instruction pointer moves to `next`.
- - `If(cond, nextIf, nextElse)` - a conditional; `f` is called and the instruction pointer moves to `nextIf` or `nextElse`, depending on the result of the call.
- - `Accept(f, next)` - switch to `Accepting` state and call `f` once a value is accepted (given to the coroutine with a `give` call). Once the coroutine is given a value, the instruction pointer moves to `next`.
- - `Yield(f, next)` - switch to `Yielding` state and call `f` when a value is taken from the coroutine (with a `take` call). Once a value is taken from the coroutine, the instruction pointer moves to `next`.
-
-Every coroutine definition results in the definition of a subclass of `pecan.CoVariables`, which contains as fields all the local variables declared in the coroutine. The names of the fields are `_coLocal<number>`; shadowed variables result in separate `_coLocal` fields and are referenced according to proper Haxe scoping rules.

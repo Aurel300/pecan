@@ -10,5 +10,6 @@ import haxe.macro.TypedExprTools;
 
 using haxe.macro.MacroStringTools;
 using StringTools;
+using Lambda;
 
 #end
