@@ -22,6 +22,10 @@ class Cfg {
     var cache = new Map();
     var ret = [];
     function walk(cfg:Cfg):Void {
+      //if (cfg == null)
+      //  return;
+      //if (cfg.kind == null)
+      //  cfg.kind = Label("<invalid>", null);
       if (cache.exists(cfg))
         return;
       ret.push(cfg);

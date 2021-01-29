@@ -19,6 +19,10 @@ class Analyser {
   var tvarTerminate:TVar;
   var tvarLabel:TVar;
   var catches:PartialCatch;
+  var loops:Array<{
+    head:PartialCfg,
+    tail:PartialCfg,
+  }> = [];
 
   public function new(ctx:CoContext) {
     this.ctx = ctx;
@@ -41,6 +45,7 @@ class Analyser {
     var partial = walk(tf.expr);
     partial.last.chain(PartialCfg.mkHalt(null));
     var cfg = partial.first.resolve();
+    if (ctx.debug) trace("cfg before optimisation", CfgPrinter.print(cfg));
     cfg = Optimiser.optimise(cfg);
     if (ctx.debug) trace("cfg after optimisation", CfgPrinter.print(cfg));
     return cfg;
@@ -254,32 +259,47 @@ class Analyser {
           first: before.first,
           last: after.last,
         };
-      case TWhile(walkBlock(_) => econd, walk(_) => e, true):
+      case TWhile(walkBlock(_) => econd, body, true):
         var ccond = PartialCfg.mkGotoIf(catches, econd.val);
         var before = strand([
+          ss(PartialCfg.mkJoin(catches)),
           econd.pre,
           ss(ccond),
         ]);
         var after = PartialCfg.mkJoin(catches);
-        ccond.chain(e.first, 0);
-        e.last.chain(before.first);
+        loops.push({
+          head: before.first,
+          tail: after,
+        });
+        var body = walk(body);
+        loops.pop();
+        ccond.chain(body.first, 0);
+        body.last.chain(before.first);
         ccond.chain(after, 1);
         {
           first: before.first,
           last: after,
         };
-      case TWhile(walkBlock(_) => econd, walk(_) => e, false):
+      case TWhile(walkBlock(_) => econd, body, false):
         var ccond = PartialCfg.mkGotoIf(catches, econd.val);
-        var before = strand([
-          e,
+        var before = PartialCfg.mkJoin(catches);
+        var after = PartialCfg.mkJoin(catches);
+        loops.push({
+          head: before,
+          tail: after,
+        });
+        var body = walk(body);
+        loops.pop();
+        var mid = strand([
+          ss(before),
+          body,
           econd.pre,
           ss(ccond),
         ]);
-        var after = PartialCfg.mkJoin(catches);
-        ccond.chain(before.first, 0);
+        ccond.chain(before, 0);
         ccond.chain(after, 1);
         {
-          first: before.first,
+          first: before,
           last: after,
         };
       // `TFor`s require some ugly type resolution because `.iterator()` is
@@ -332,8 +352,9 @@ class Analyser {
           case _:
             throw "!";
         }
-      case TFor(tv, walkBlock(_) => eit, walk(_) => body):
+      case TFor(tv, walkBlock(_) => eit, body):
         var before = strand([
+          ss(PartialCfg.mkJoin(catches)),
           eit.pre,
           ss(PartialCfg.mkJoin(catches)),
         ]);
@@ -360,22 +381,31 @@ class Analyser {
               }, []),
             });
             before.last.chain(ccond);
-            var mid = PartialCfg.mkSync(catches, {
-              t: typeVoid,
-              pos: eit.val.pos,
-              expr: TVar(tv, {
-                t: next.t,
+            var mid = strand([
+              ss(PartialCfg.mkJoin(catches)),
+              ss(PartialCfg.mkSync(catches, {
+                t: typeVoid,
                 pos: eit.val.pos,
-                expr: TCall({
-                  t: callN.t,
+                expr: TVar(tv, {
+                  t: next.t,
                   pos: eit.val.pos,
-                  expr: TField(eit.val, faN),
-                }, []),
-              }),
+                  expr: TCall({
+                    t: callN.t,
+                    pos: eit.val.pos,
+                    expr: TField(eit.val, faN),
+                  }, []),
+                }),
+              })),
+            ]);
+            loops.push({
+              head: mid.first,
+              tail: after,
             });
-            ccond.chain(mid, 0);
+            var body = walk(body);
+            loops.pop();
+            ccond.chain(mid.first, 0);
             ccond.chain(after, 1);
-            mid.chain(body.first);
+            mid.last.chain(body.first);
             body.last.chain(ccond);
             {
               first: before.first,
@@ -385,6 +415,15 @@ class Analyser {
             Context.fatalError("invalid for loop", pos);
         }
       case TFor(_): Context.fatalError("invalid for loop", pos);
+      case TBreak | TContinue:
+        if (loops.length == 0)
+          Context.fatalError("invalid break", pos);
+        var goto = PartialCfg.mkGoto(catches);
+        goto.chain(e.expr == TBreak ? loops[loops.length - 1].tail : loops[loops.length - 1].head);
+        {
+          first: goto,
+          last: PartialCfg.mkHalt(catches), // dummy to not override the goto
+        };
       case TSwitch(walkBlock(_) => esw, cases, def):
         var sw = PartialCfg.mkGotoSwitch(catches, esw.val, cases);
         var before = strand([

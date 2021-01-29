@@ -32,17 +32,20 @@ class Optimiser {
     walk = function(cfg:Cfg):Cfg {
       if (cache.exists(cfg))
         return cache[cfg];
-      cache[cfg] = new Cfg(walkCatches(cfg.catches), null);
+      cache[cfg] = new Cfg(null, null);
+      cache[cfg].catches = walkCatches(cfg.catches);
       cache[cfg].kind = (switch (cfg.kind) {
-        case Sync(_, _) | Goto(_):
+        case Sync(_, {kind: Sync(_, _) | Goto(_)}) | Goto({kind: Sync(_, _) | Goto(_)}):
           var exprs = [];
           var cur = cfg;
           while (true) {
             switch (cur.kind) {
               case Sync(e, next):
                 exprs = mergeArr(exprs, e);
+                if (cache.exists(next) || next.kind == null) break;
                 cur = next;
               case Goto(next):
+                if (cache.exists(next) || next.kind == null) break;
                 cur = next;
               case _: break;
             }
@@ -51,6 +54,8 @@ class Optimiser {
           exprs.length > 0
             ? Sync(TastTools.tblock(exprs), cur)
             : (cur.kind == Halt ? Halt : Goto(cur));
+        case Sync(e, next): Sync(e, walk(next));
+        case Goto(next): Goto(walk(next));
         case GotoIf(e, nextIf, nextElse): GotoIf(e, walk(nextIf), walk(nextElse));
         case GotoSwitch(e, cases, nextDef):
           GotoSwitch(e, cases.map(c -> {
@@ -61,7 +66,7 @@ class Optimiser {
         case Yield(e, next): Yield(e, walk(next));
         case Suspend(next): Suspend(walk(next));
         case Label(label, next): Label(label, walk(next));
-        case Join(next): return cache[cfg] = walk(next);
+        case Join(next): walk(next).kind;
         case Break(next): Break(walk(next));
         case Halt: Halt;
       });

@@ -610,6 +610,32 @@ class TestCoroutine extends Test {
     c.give(3);
     eq(c.state, Terminated);
 
+    // EBreak
+    var c = co({
+      for (i in 0...3) {
+        if (i > 1) break;
+        yield(i);
+      }
+    }, null, (_ : Int)).run();
+    eq(c.take(), 0);
+    eq(c.take(), 1);
+    eq(c.state, Terminated);
+
+    // EContinue
+    var c = co({
+      for (i in 0...3) {
+        if (i < 2) {
+          yield(i);
+          continue;
+        }
+        break;
+        assert();
+      }
+    }, null, (_ : Int)).run();
+    eq(c.take(), 0);
+    eq(c.take(), 1);
+    eq(c.state, Terminated);
+
     // ETernary
     var c = co(eq(accept() ? 1 : 0, 1), (_ : Bool)).run();
     c.give(true);

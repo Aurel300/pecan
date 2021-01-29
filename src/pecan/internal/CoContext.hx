@@ -200,7 +200,9 @@ class CoContext {
   function canonise():Void {
     var canoniser = new Canoniser(this);
     switch (typedBlock.expr) {
-      case TFunction(tf): tf.expr = canoniser.canonise(tf.expr);
+      case TFunction(tf):
+        tf.expr = canoniser.canonise(tf.expr);
+        if (debug) trace("canonised TAST", new haxe.macro.Printer().printExpr(Context.getTypedExpr(tf.expr)));
       case _: throw "!";
     }
   }
