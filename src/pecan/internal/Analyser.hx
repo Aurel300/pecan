@@ -3,6 +3,7 @@ package pecan.internal;
 #if macro
 
 import pecan.internal.TastTools.*;
+import pecan.internal.PartialCfg.PartialCatch;
 
 /**
 Performs control flow analysis to convert a typed expression into a
@@ -17,6 +18,7 @@ class Analyser {
   var tvarSuspend:TVar;
   var tvarTerminate:TVar;
   var tvarLabel:TVar;
+  var catches:PartialCatch;
 
   public function new(ctx:CoContext) {
     this.ctx = ctx;
@@ -37,7 +39,7 @@ class Analyser {
     tvarTerminate = tf.args[6].v;
 
     var partial = walk(tf.expr);
-    partial.last.chain(PartialCfg.mkHalt());
+    partial.last.chain(PartialCfg.mkHalt(null));
     var cfg = partial.first.resolve();
     cfg = Optimiser.optimise(cfg);
     if (ctx.debug) trace("cfg after optimisation", CfgPrinter.print(cfg));
@@ -175,58 +177,58 @@ class Analyser {
   CFG nodes.
    */
   function walk(e:TypedExpr):CfgStrand {
-    // TODO: try catch blocks ...
+    // TODO: continue, break
     if (e == null)
       return null;
     var pos = e.pos;
     return (switch (e.expr) {
       case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarAccept.id):
-        ss(PartialCfg.mkAccept(null));
+        ss(PartialCfg.mkAccept(catches, null));
       case TBinop(OpAssign, {expr: TLocal(lhs)}, {expr: TCall({expr: TLocal(tv)}, [])}) if (tv.id == tvarAccept.id):
-        ss(PartialCfg.mkAccept(lhs));
+        ss(PartialCfg.mkAccept(catches, lhs));
       case TVar(lhs, {expr: TCall({expr: TLocal(tv)}, [])}) if (tv.id == tvarAccept.id):
         strand([
-          ss(PartialCfg.mkSync({
+          ss(PartialCfg.mkSync(catches, {
             t: e.t,
             pos: e.pos,
             expr: TVar(lhs, null),
           })),
-          ss(PartialCfg.mkAccept(lhs)),
+          ss(PartialCfg.mkAccept(catches, lhs)),
         ]);
       case TCall({expr: TLocal(tv)}, [arg]) if (tv.id == tvarYield.id):
-        ss(PartialCfg.mkYield(arg));
+        ss(PartialCfg.mkYield(catches, arg));
       case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarSuspend.id):
-        ss(PartialCfg.mkSuspend());
+        ss(PartialCfg.mkSuspend(catches));
       case TCall({expr: TLocal(tv)}, [{expr: TConst(TString(label))}]) if (tv.id == tvarLabel.id):
-        ss(PartialCfg.mkLabel(label));
+        ss(PartialCfg.mkLabel(catches, label));
       case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarTerminate.id):
-        ss(PartialCfg.mkHalt());
+        ss(PartialCfg.mkHalt(catches));
       case TCall({expr: TField(_, fa)}, args) if (isPecanAction(fa)):
         insertSelf(args, fieldToFunc(fa));
         strand([
-          ss(PartialCfg.mkSync(e)),
-          ss(PartialCfg.mkBreak()),
+          ss(PartialCfg.mkSync(catches, e)),
+          ss(PartialCfg.mkBreak(catches)),
         ]);
       case TBinop(OpAssign, {expr: TLocal(lhs)}, call = {expr: TCall({expr: TField(_, fa)}, args)}) if (isPecanAccept(fa)):
         var tf = fieldToFunc(fa);
         insertRet(args, tf, lhs);
         insertSelf(args, tf);
         strand([
-          ss(PartialCfg.mkSync(call)),
-          ss(PartialCfg.mkBreak()),
+          ss(PartialCfg.mkSync(catches, call)),
+          ss(PartialCfg.mkBreak(catches)),
         ]);
       case TVar(lhs, call = {expr: TCall({expr: TField(_, fa)}, args)}) if (isPecanAccept(fa)):
         var tf = fieldToFunc(fa);
         insertRet(args, tf, lhs);
         insertSelf(args, tf);
         strand([
-          ss(PartialCfg.mkSync({
+          ss(PartialCfg.mkSync(catches, {
             t: e.t,
             pos: e.pos,
             expr: TVar(lhs, null),
           })),
-          ss(PartialCfg.mkSync(call)),
-          ss(PartialCfg.mkBreak()),
+          ss(PartialCfg.mkSync(catches, call)),
+          ss(PartialCfg.mkBreak(catches)),
         ]);
       case TLocal(tv) if (
         tv.id == tvarAccept.id
@@ -240,12 +242,12 @@ class Analyser {
         Context.fatalError("cannot use pecan actions as values", e.pos);
       case TBlock(_.map(walk) => exprs): strand(exprs);
       case TIf(walkBlock(_) => econd, walk(_) => eif, walk(_) => eelse):
-        var ccond = PartialCfg.mkGotoIf(econd.val);
+        var ccond = PartialCfg.mkGotoIf(catches, econd.val);
         var before = strand([
           econd.pre,
           ss(ccond),
         ]);
-        var after = ss(PartialCfg.mkJoin());
+        var after = ss(PartialCfg.mkJoin(catches));
         ccond.chain(strand([eif, after]).first, 0);
         ccond.chain(strand([eelse, after]).first, 1);
         {
@@ -253,12 +255,12 @@ class Analyser {
           last: after.last,
         };
       case TWhile(walkBlock(_) => econd, walk(_) => e, true):
-        var ccond = PartialCfg.mkGotoIf(econd.val);
+        var ccond = PartialCfg.mkGotoIf(catches, econd.val);
         var before = strand([
           econd.pre,
           ss(ccond),
         ]);
-        var after = PartialCfg.mkJoin();
+        var after = PartialCfg.mkJoin(catches);
         ccond.chain(e.first, 0);
         e.last.chain(before.first);
         ccond.chain(after, 1);
@@ -267,13 +269,13 @@ class Analyser {
           last: after,
         };
       case TWhile(walkBlock(_) => econd, walk(_) => e, false):
-        var ccond = PartialCfg.mkGotoIf(econd.val);
+        var ccond = PartialCfg.mkGotoIf(catches, econd.val);
         var before = strand([
           e,
           econd.pre,
           ss(ccond),
         ]);
-        var after = PartialCfg.mkJoin();
+        var after = PartialCfg.mkJoin(catches);
         ccond.chain(before.first, 0);
         ccond.chain(after, 1);
         {
@@ -333,9 +335,9 @@ class Analyser {
       case TFor(tv, walkBlock(_) => eit, walk(_) => body):
         var before = strand([
           eit.pre,
-          ss(PartialCfg.mkJoin()),
+          ss(PartialCfg.mkJoin(catches)),
         ]);
-        var after = PartialCfg.mkJoin();
+        var after = PartialCfg.mkJoin(catches);
         var tt = Context.storeTypedExpr({
           t: eit.val.t,
           pos: eit.val.pos,
@@ -348,7 +350,7 @@ class Analyser {
             TCall(callH = {expr: TField(itH, faH)}, []),
             TCall(callN = {expr: TField(_, faN)}, []),
           ]:
-            var ccond = PartialCfg.mkGotoIf({
+            var ccond = PartialCfg.mkGotoIf(catches, {
               t: hasNext.t,
               pos: eit.val.pos,
               expr: TCall({
@@ -358,7 +360,7 @@ class Analyser {
               }, []),
             });
             before.last.chain(ccond);
-            var mid = PartialCfg.mkSync({
+            var mid = PartialCfg.mkSync(catches, {
               t: typeVoid,
               pos: eit.val.pos,
               expr: TVar(tv, {
@@ -384,12 +386,12 @@ class Analyser {
         }
       case TFor(_): Context.fatalError("invalid for loop", pos);
       case TSwitch(walkBlock(_) => esw, cases, def):
-        var sw = PartialCfg.mkGotoSwitch(esw.val, cases);
+        var sw = PartialCfg.mkGotoSwitch(catches, esw.val, cases);
         var before = strand([
           esw.pre,
           ss(sw),
         ]);
-        var after = PartialCfg.mkJoin();
+        var after = PartialCfg.mkJoin(catches);
         for (i in 0...cases.length) {
           var cc = walk(cases[i].expr);
           sw.chain(cc.first, i);
@@ -406,11 +408,30 @@ class Analyser {
           first: before.first,
           last: after,
         };
-      case TMeta(m, e):
-        // TODO: will dropping all metas cause issues?
+      case TMeta({name: ":ast", params: [_]}, e):
         // This is here because switches get an `@:ast` meta after typing.
         walk(e);
-      case _: ss(PartialCfg.mkSync(e));
+      case TTry(e, newCatches):
+        var after = PartialCfg.mkJoin(catches);
+        catches = {
+          handlers: [ for (c in newCatches) {
+            var handler = walk(c.expr);
+            handler.last.chain(after);
+            {
+              v: c.v,
+              cfg: handler.first,
+            };
+          }],
+          parent: catches,
+        };
+        var ret = walk(e);
+        ret.last.chain(after);
+        catches = catches.parent;
+        {
+          first: ret.first,
+          last: after,
+        };
+      case _: ss(PartialCfg.mkSync(catches, e));
     });
   }
 }

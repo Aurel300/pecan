@@ -27,6 +27,8 @@ class Embedder {
       }
       varsUsed[v.id][states.indexOf(state)] = true;
     }
+    var catchesDeclared = new Map();
+    var locals = [];
     for (state in states) {
       function findUses(e:TypedExpr):Void {
         if (e == null)
@@ -39,6 +41,17 @@ class Embedder {
           case _: TypedExprTools.iter(e, findUses);
         }
       }
+      var c = state.catches;
+      while (c != null) {
+        for (h in c.handlers) {
+          // catch variables are only declared in the handler
+          if (!catchesDeclared.exists(h.v.id)) {
+            catchesDeclared[h.v.id] = true;
+            locals.push(tdeclare(h.v));
+          }
+        }
+        c = c.parent;
+      }
       switch (state.kind) {
         case Sync(e, _): findUses(e);
         case GotoIf(e, _, _): findUses(e);
@@ -50,21 +63,10 @@ class Embedder {
         case _:
       }
     }
-    var locals = [];
     function replaceDecls(e:TypedExpr):TypedExpr {
       return (switch (e.expr) {
         case TVar(v, expr) if (varsUsed[v.id].count() > 1):
-          locals.push({
-            t: e.t,
-            expr: TVar(v, switch (v.t) {
-              case TAbstract(_.get().name => "Int", []): tint(0);
-              case TAbstract(_.get().name => "Bool", []): tbool(false);
-              case TAbstract(_.get().name => "Float", []): tfloat(0);
-              case TAbstract(_.get().name => "Void", []): null;
-              case _: tnull(v.t);
-            }),
-            pos: e.pos,
-          });
+          locals.push(tdeclare(v));
           expr != null ? tassign(tlocal(v), expr) : tlocal(v);
         case _: TypedExprTools.map(e, replaceDecls);
       });
@@ -218,9 +220,29 @@ class Embedder {
     var acceptsCases:Array<TypedCase> = [];
     var yieldsCases:Array<TypedCase> = [];
     var labels:Map<String, Int> = [];
+    function wrapHandlers(catches:CfgCatch<Cfg>, expr:TypedExpr):TypedExpr {
+      while (catches != null) {
+        expr = {
+          expr: TTry(expr, [ for (h in catches.handlers) {
+            var tmp = tvar(ctx.fresh(), h.v.t);
+            {
+              v: tmp.v,
+              expr: tblock([
+                tassign(tlocal(h.v), tlocal(tmp.v)),
+                tstate(h.cfg),
+              ]),
+            };
+          } ]),
+          pos: pos,
+          t: typeInt,
+        };
+        catches = catches.parent;
+      }
+      return expr;
+    }
     var actionsCases:Array<TypedCase> = [ for (stateIdx => state in states) {
       values: [tint(stateIdx)],
-      expr: tblock(switch (state.kind) {
+      expr: wrapHandlers(state.catches, tblock(switch (state.kind) {
         case Sync(e, next): [e, tstate(next)];
         case Goto(next): [tstate(next)];
         case GotoIf(e, nextIf, nextElse):
@@ -280,7 +302,7 @@ class Embedder {
             tassign(selfAccessReady, tbool(false)),
             tint(-1),
           ];
-      }),
+      })),
     } ];
     var invalid = Context.typeExpr(macro throw "invalid state");
     acceptsFuncTf.expr = treturn({

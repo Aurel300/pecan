@@ -6,9 +6,11 @@ package pecan.internal;
 Control-flow graph representation.
  */
 class Cfg {
+  public var catches:CfgCatch<Cfg>;
   public var kind:CfgKind<Cfg>;
 
-  public function new(kind:CfgKind<Cfg>) {
+  public function new(catches:CfgCatch<Cfg>, kind:CfgKind<Cfg>) {
+    this.catches = catches;
     this.kind = kind;
   }
 
@@ -41,6 +43,13 @@ class Cfg {
         case Join(next): walk(next);
         case Break(next): walk(next);
         case Halt:
+      }
+      var c = cfg.catches;
+      while (c != null) {
+        for (h in c.handlers) {
+          walk(h.cfg);
+        }
+        c = c.parent;
       }
     }
     walk(this);

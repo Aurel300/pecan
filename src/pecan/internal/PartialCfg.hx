@@ -7,33 +7,33 @@ package pecan.internal;
 and each exit point may or may not yet be resolved.
  */
 class PartialCfg {
-  public static function mkSync(e:TypedExpr)
-    return mk((slot, slots) -> new PartialCfg(Sync(e, slot()), slots));
-  public static function mkGoto()
-    return mk((slot, slots) -> new PartialCfg(Goto(slot()), slots));
-  public static function mkGotoIf(e:TypedExpr)
-    return mk((slot, slots) -> new PartialCfg(GotoIf(e, slot(), slot()), slots));
-  public static function mkGotoSwitch(e:TypedExpr, cases:Array<{
+  public static function mkSync(c:PartialCatch, e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, Sync(e, slot()), slots));
+  public static function mkGoto(c:PartialCatch)
+    return mk((slot, slots) -> new PartialCfg(c, Goto(slot()), slots));
+  public static function mkGotoIf(c:PartialCatch, e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, GotoIf(e, slot(), slot()), slots));
+  public static function mkGotoSwitch(c:PartialCatch, e:TypedExpr, cases:Array<{
     values:Array<TypedExpr>,
   }>)
-    return mk((slot, slots) -> new PartialCfg(GotoSwitch(e, cases.map(c -> {
+    return mk((slot, slots) -> new PartialCfg(c, GotoSwitch(e, cases.map(c -> {
       values: c.values,
       next: slot(),
     }), slot()), slots));
-  public static function mkAccept(v:TVar)
-    return mk((slot, slots) -> new PartialCfg(Accept(v, slot()), slots));
-  public static function mkYield(e:TypedExpr)
-    return mk((slot, slots) -> new PartialCfg(Yield(e, slot()), slots));
-  public static function mkSuspend()
-    return mk((slot, slots) -> new PartialCfg(Suspend(slot()), slots));
-  public static function mkLabel(label:String)
-    return mk((slot, slots) -> new PartialCfg(Label(label, slot()), slots));
-  public static function mkJoin()
-    return mk((slot, slots) -> new PartialCfg(Join(slot()), slots));
-  public static function mkBreak()
-    return mk((slot, slots) -> new PartialCfg(Break(slot()), slots));
-  public static function mkHalt()
-    return mk((slot, slots) -> new PartialCfg(Halt, slots));
+  public static function mkAccept(c:PartialCatch, v:TVar)
+    return mk((slot, slots) -> new PartialCfg(c, Accept(v, slot()), slots));
+  public static function mkYield(c:PartialCatch, e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, Yield(e, slot()), slots));
+  public static function mkSuspend(c:PartialCatch)
+    return mk((slot, slots) -> new PartialCfg(c, Suspend(slot()), slots));
+  public static function mkLabel(c:PartialCatch, label:String)
+    return mk((slot, slots) -> new PartialCfg(c, Label(label, slot()), slots));
+  public static function mkJoin(c:PartialCatch)
+    return mk((slot, slots) -> new PartialCfg(c, Join(slot()), slots));
+  public static function mkBreak(c:PartialCatch)
+    return mk((slot, slots) -> new PartialCfg(c, Break(slot()), slots));
+  public static function mkHalt(c:PartialCatch)
+    return mk((slot, slots) -> new PartialCfg(c, Halt, slots));
 
   static function mk(f:(slot:Void->PartialSlot, slots:Array<PartialSlot>)->PartialCfg):PartialCfg {
     var slots = [];
@@ -50,11 +50,25 @@ class PartialCfg {
     return slot.cfg.resolve();
   }
 
+  static function resolveCatch(catches:PartialCatch):CfgCatch<Cfg> {
+    if (catches == null)
+      return null;
+    return {
+      handlers: [ for (h in catches.handlers) {
+        v: h.v,
+        cfg: h.cfg.resolve(),
+      } ],
+      parent: resolveCatch(catches.parent),
+    };
+  }
+
+  public var catches:PartialCatch;
   public var kind:CfgKind<PartialSlot>;
   public var slots:Array<PartialSlot>;
   var cached:Cfg;
 
-  public function new(kind:CfgKind<PartialSlot>, slots:Array<PartialSlot>) {
+  public function new(catches:PartialCatch, kind:CfgKind<PartialSlot>, slots:Array<PartialSlot>) {
+    this.catches = catches;
     this.kind = kind;
     this.slots = slots;
   }
@@ -76,7 +90,7 @@ class PartialCfg {
   public function resolve():Cfg {
     if (cached != null)
       return cached;
-    cached = new Cfg(null);
+    cached = new Cfg(resolveCatch(catches), null);
     cached.kind = (switch (kind) {
       case Sync(e, next): Sync(e, resolveSlot(next));
       case Goto(next): Goto(resolveSlot(next));
@@ -101,5 +115,7 @@ class PartialCfg {
 typedef PartialSlot = {
   cfg:Null<PartialCfg>,
 };
+
+typedef PartialCatch = CfgCatch<PartialCfg>;
 
 #end

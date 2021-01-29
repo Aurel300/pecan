@@ -525,6 +525,14 @@ class TestCoroutine extends Test {
     c.give(false);
     eq(c.state, Terminated);
 
+    // EVars
+    var c = co({
+      var x = accept();
+      eq(x, true);
+    }, (_ : Bool)).run();
+    c.give(true);
+    eq(c.state, Terminated);
+
     // EBlock
     var reached = false;
     var c = co(eq({
@@ -536,6 +544,13 @@ class TestCoroutine extends Test {
     eq(reached, true);
     eq(c.state, Terminated);
 
+    // EFor
+    var c = co({
+      for (x in accept()) eq(x, 42);
+    }, (_ : Array<Int>)).run();
+    c.give([42]);
+    eq(c.state, Terminated);
+
     // EIf
     var c = co(eq(if (accept()) {
       1;
@@ -543,6 +558,56 @@ class TestCoroutine extends Test {
       0;
     }, 1), (_ : Bool)).run();
     c.give(true);
+    eq(c.state, Terminated);
+
+    // EWhile
+    var c = co({
+      var done = false;
+      while (accept()) {
+        eq(done, false);
+        done = true;
+      }
+    }, (_ : Bool)).run();
+    c.give(true);
+    c.give(false);
+    eq(c.state, Terminated);
+
+    // ESwitch
+    var c = co({
+      switch (accept()) {
+        case 5 if (accept() > 0):
+          assert();
+        case 5:
+          eq(accept(), 10);
+        case _:
+          assert();
+      }
+    }, (_ : Int)).run();
+    c.give(5);
+    c.give(-1);
+    c.give(10);
+    eq(c.state, Terminated);
+
+    // ETry
+    var c = co({
+      try {
+        try {
+          throw accept() + 1;
+          assert();
+        } catch (e:String) {
+          assert();
+        } catch (e:Int) {
+          throw accept() + e;
+        } catch (e:Float) {
+          assert();
+        }
+        assert();
+      } catch (e:Int) {
+        eq(e, 6);
+      }
+    }, (_ : Int)).run();
+    c.give(2);
+    c.give(3);
     eq(c.state, Terminated);
 
     // ETernary

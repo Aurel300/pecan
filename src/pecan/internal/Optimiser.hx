@@ -17,10 +17,22 @@ class Optimiser {
 
   public static function optimise(cfg:Cfg):Cfg {
     var cache = new Map();
-    function walk(cfg:Cfg):Cfg {
+    var walk:Cfg->Cfg = null;
+    function walkCatches(catches:CfgCatch<Cfg>):CfgCatch<Cfg> {
+      if (catches == null)
+        return null;
+      return {
+        handlers: [ for (h in catches.handlers) {
+          v: h.v,
+          cfg: walk(h.cfg),
+        } ],
+        parent: walkCatches(catches.parent),
+      };
+    }
+    walk = function(cfg:Cfg):Cfg {
       if (cache.exists(cfg))
         return cache[cfg];
-      cache[cfg] = new Cfg(null);
+      cache[cfg] = new Cfg(walkCatches(cfg.catches), null);
       cache[cfg].kind = (switch (cfg.kind) {
         case Sync(_, _) | Goto(_):
           var exprs = [];

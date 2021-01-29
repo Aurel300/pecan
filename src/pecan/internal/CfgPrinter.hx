@@ -16,12 +16,15 @@ class CfgPrinter {
     function print(e:TypedExpr):String {
       return printer.printExpr(Context.getTypedExpr(e));
     }
+    function printVar(v:TVar):String {
+      return '${v.name} : ${printer.printComplexType(Context.toComplexType(v.t))}';
+    }
     function tabVar(v:TVar):Void {
       if (v == null) {
         out.add("  (none)");
         return;
       }
-      out.add("  " + v.name);
+      out.add("  " + printVar(v));
     }
     function tab(e:TypedExpr):Void {
       if (e == null) {
@@ -63,6 +66,14 @@ class CfgPrinter {
         case Join(next): out.add('Join -> C${num(next)}');
         case Break(next): out.add('Break -> C${num(next)}');
         case Halt: out.add("Halt");
+      }
+      var c = arr[i].catches;
+      while (c != null) {
+        out.add("\n  (catch group)");
+        for (h in c.handlers) {
+          out.add('\n  catch(${printVar(h.v)}) -> C${num(h.cfg)}');
+        }
+        c = c.parent;
       }
       out.add("\n\n");
     }

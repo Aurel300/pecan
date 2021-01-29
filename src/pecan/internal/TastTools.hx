@@ -91,6 +91,20 @@ class TastTools {
     };
   }
 
+  public static function tdeclare(v:TVar):TypedExpr {
+    return {
+      expr: TVar(v, switch (v.t) {
+        case TAbstract(_.get().name => "Int", []): tint(0);
+        case TAbstract(_.get().name => "Bool", []): tbool(false);
+        case TAbstract(_.get().name => "Float", []): tfloat(0);
+        case TAbstract(_.get().name => "Void", []): null;
+        case _: tnull(v.t);
+      }),
+      pos: pos,
+      t: typeVoid,
+    };
+  }
+
   public static function tblock(es:Array<TypedExpr>, ?pos:Position):TypedExpr {
     if (es.length == 0)
       throw "!";
