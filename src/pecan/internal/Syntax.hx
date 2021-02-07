@@ -9,6 +9,38 @@ class Syntax {
     var fields = Context.getBuildFields();
     return [ for (field in fields) {
       switch (field.kind) {
+        case FFun(f) if (field.meta.exists(m -> m.name == ":pecan.co")):
+          var e = {
+            expr: EFunction(FAnonymous, f),
+            pos: field.pos,
+          };
+          // keep original argument names when possible, but handle duplicates
+          var names = [];
+          for (a in f.args) {
+            if (!names.contains(a.name)) {
+              names.push(a.name);
+            } else {
+              var i = 0;
+              while (names.contains('${a.name}_$i')) i++;
+              names.push('${a.name}_$i');
+            }
+          }
+          var callArgs = names.map(n -> macro $i{n});
+          var declArgs = [ for (i => a in f.args) {
+            value: a.value,
+            type: a.type,
+            opt: a.opt,
+            name: names[i],
+            meta: a.meta,
+          } ];
+          var meta = field.meta.find(m -> m.name == ":pecan.co");
+          var typeIn = meta.params != null && meta.params[0] != null ? meta.params[0] : macro null;
+          var typeOut = meta.params != null && meta.params[1] != null ? meta.params[1] : macro null;
+          field.kind = FFun({
+            ret: null,
+            expr: macro return pecan.Co.co($e{process(e)}, $typeIn, $typeOut).run($a{callArgs}),
+            args: declArgs,
+          });
         case FFun(f):
           if (f.expr != null) {
             f.expr = process(f.expr);
