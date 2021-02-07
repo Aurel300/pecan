@@ -46,7 +46,7 @@ class Cfg {
         case Label(label, next): walk(next);
         case Join(next): walk(next);
         case Break(next): walk(next);
-        case Halt:
+        case Halt(_):
       }
       var c = cfg.catches;
       while (c != null) {

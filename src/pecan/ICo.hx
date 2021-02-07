@@ -4,10 +4,13 @@ package pecan;
 Interface for any generated coroutine instance.
 
 The type parameter `TIn` represents values that the coroutine can `accept()`,
-`TOut` represents values that the coroutine can `yield(...)`.
+`TOut` represents values that the coroutine can `yield(...)`, and `TRet`
+represents the return value.
  */
-interface ICo<TIn, TOut> {
+interface ICo<TIn, TOut, TRet> {
   var state(get, never):CoState;
+  var returned(get, never):Null<TRet>;
+  var onHalt:()->Void;
 
   /**
   Moves the coroutine forward until a suspend point is hit, but only if it was

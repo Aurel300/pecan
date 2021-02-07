@@ -25,10 +25,13 @@ class CoContext {
   public var args:Array<FunctionArg> = [];
   public var ctIn:ComplexType;
   public var ctOut:ComplexType;
+  public var ctRet:ComplexType;
   public var tIn:Type;
   public var tOut:Type;
+  public var tRet:Type;
   public var hasIn:Bool;
   public var hasOut:Bool;
+  public var hasRet:Bool;
   public var tpCo:TypePath;
   public var ctCo:ComplexType;
   public var tpFactory:TypePath;
@@ -42,14 +45,24 @@ class CoContext {
 
   public function new(block:Expr, eIn:Expr, eOut:Expr, debug:Bool) {
     this.debug = debug;
-    pos = Context.currentPos();
-    setupTypes(eIn, eOut);
+    pos = block.pos;
+    ctRet = (macro : Void);
     this.block = (switch (block.expr) {
       case EFunction(_, f):
         args = f.args;
+        for (a in args) {
+          // normalise argument types
+          if (a.type != null) {
+            a.type = Context.toComplexType(Context.resolveType(a.type, pos));
+          }
+        }
+        if (f.ret != null) {
+          ctRet = f.ret;
+        }
         f.expr;
       case _: block;
     });
+    setupTypes(eIn, eOut);
   }
 
   public function fresh():String {
@@ -61,11 +74,14 @@ class CoContext {
     ctOut = parseIOType(eOut);
     tIn = Context.resolveType(ctIn, pos);
     tOut = Context.resolveType(ctOut, pos);
+    tRet = Context.resolveType(ctRet, pos);
     // normalise types
-    ctIn = haxe.macro.TypeTools.toComplexType(tIn);
-    ctOut = haxe.macro.TypeTools.toComplexType(tOut);
+    ctIn = Context.toComplexType(tIn);
+    ctOut = Context.toComplexType(tOut);
+    ctRet = Context.toComplexType(tRet);
     hasIn = !tIn.match(TAbstract(_.get().name => "Void", []));
     hasOut = !tOut.match(TAbstract(_.get().name => "Void", []));
+    hasRet = !tRet.match(TAbstract(_.get().name => "Void", []));
     var instanceNum = instanceCtr++;
     tpCo = {
       name: 'CoInstance_${instanceNum}', // TODO: more stable naming
@@ -93,8 +109,11 @@ class CoContext {
   }
 
   function defineInstance():Void {
-    var tdCo = macro class CoInstance implements pecan.ICo<$ctIn, $ctOut> {
+    var ctRetAdj = !hasRet ? (macro : pecan.Void) : ctRet;
+    var tdCo = macro class CoInstance implements pecan.ICo<$ctIn, $ctOut, $ctRetAdj> {
       public var state(get, never):pecan.CoState;
+      public var returned(get, never):Null<$ctRetAdj>;
+      public var onHalt:()->Void = () -> {};
       var actions:()->Int;
       var accepts:(val:$ctIn)->Int;
       var yields:()->$ctOut;
@@ -103,6 +122,7 @@ class CoContext {
       var terminated:Bool = false;
       var accepting:Bool = false;
       var yielding:Bool = false;
+      var returnedValue:Null<$ctRetAdj>;
       var cfgState:Int = 0;
 
       function new() {}
@@ -120,6 +140,12 @@ class CoContext {
           pecan.CoState.Suspended;
         });
       }
+
+      inline function get_returned():Null<$ctRetAdj> $e{hasRet ? macro {
+        return returnedValue;
+      } : macro {
+        return pecan.Void.Void.Void;
+      }};
 
       public function tick():Void {
         if (!ready)
@@ -172,6 +198,11 @@ class CoContext {
         wakeup();
       }
     };
+    tdCo.meta.push({
+      name: ":using",
+      params: [macro pecan.CoTools],
+      pos: pos,
+    });
     tdCo.name = tpCo.name;
     tdCo.pack = tpCo.pack;
     Context.defineType(tdCo);
@@ -187,7 +218,7 @@ class CoContext {
       suspend:()->Void,
       label:String->Void,
       terminate:()->Void
-    ):Void {};
+    ):$ctRet {};
     switch (f.expr) {
       case EFunction(_, f):
         args.iter(f.args.push);

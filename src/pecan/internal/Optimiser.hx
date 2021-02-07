@@ -53,7 +53,7 @@ class Optimiser {
           cur = walk(cur);
           exprs.length > 0
             ? Sync(TastTools.tblock(exprs), cur)
-            : (cur.kind == Halt ? Halt : Goto(cur));
+            : (cur.kind.match(Halt(_)) ? cur.kind : Goto(cur));
         case Sync(e, next): Sync(e, walk(next));
         case Goto(next): Goto(walk(next));
         case GotoIf(e, nextIf, nextElse): GotoIf(e, walk(nextIf), walk(nextElse));
@@ -66,9 +66,10 @@ class Optimiser {
         case Yield(e, next): Yield(e, walk(next));
         case Suspend(next): Suspend(walk(next));
         case Label(label, next): Label(label, walk(next));
-        case Join(next): walk(next).kind;
+        //case Join(next): walk(next).kind;
+        case Join(next): Join(walk(next));
         case Break(next): Break(walk(next));
-        case Halt: Halt;
+        case Halt(e): Halt(e);
       });
       return cache[cfg];
     }

@@ -32,8 +32,8 @@ class PartialCfg {
     return mk((slot, slots) -> new PartialCfg(c, Join(slot()), slots));
   public static function mkBreak(c:PartialCatch)
     return mk((slot, slots) -> new PartialCfg(c, Break(slot()), slots));
-  public static function mkHalt(c:PartialCatch)
-    return mk((slot, slots) -> new PartialCfg(c, Halt, slots));
+  public static function mkHalt(c:PartialCatch, ?e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, Halt(e), slots));
 
   static function mk(f:(slot:Void->PartialSlot, slots:Array<PartialSlot>)->PartialCfg):PartialCfg {
     var slots = [];
@@ -106,7 +106,7 @@ class PartialCfg {
       case Label(label, next): Label(label, resolveSlot(next));
       case Join(next): Join(resolveSlot(next));
       case Break(next): Break(resolveSlot(next));
-      case Halt: Halt;
+      case Halt(e): Halt(e);
     });
     return cached;
   }

@@ -164,16 +164,17 @@ class Analyser {
     if (args[retPos] != null && !args[retPos].expr.match(TConst(TNull))) {
       Context.fatalError("invalid call to @:pecan.accept function", args[retPos].pos);
     }
-    var arg = tvar("_arg", target.t);
-    args[retPos] = {
-      expr: TFunction({
-        expr: tassign(tlocal(target), tlocal(arg.v)),
-        args: [{value: null, v: arg.v}],
-        t: typeVoid,
-      }),
-      pos: ctx.pos,
-      t: tf.args[retPos].v.t,
-    };
+    var tArg = target == null ? typeAny : target.t;
+    var ctArg = Context.toComplexType(tArg);
+    var retFunc = Context.typeExpr(macro function(_arg:$ctArg):Void {});
+    var retFuncTf = (switch (retFunc.expr) {
+      case TFunction(tf): tf;
+      case _: throw "!";
+    });
+    if (target != null) {
+      retFuncTf.expr = tassign(tlocal(target), tlocal(retFuncTf.args[0].v));
+    }
+    args[retPos] = retFunc;
   }
 
   /**
@@ -182,10 +183,10 @@ class Analyser {
   CFG nodes.
    */
   function walk(e:TypedExpr):CfgStrand {
-    // TODO: continue, break
     if (e == null)
       return null;
     var pos = e.pos;
+    TastTools.pos = pos;
     return (switch (e.expr) {
       case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarAccept.id):
         ss(PartialCfg.mkAccept(catches, null));
@@ -200,6 +201,8 @@ class Analyser {
           })),
           ss(PartialCfg.mkAccept(catches, lhs)),
         ]);
+      case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarAccept.id):
+        ss(PartialCfg.mkAccept(catches, null));
       case TCall({expr: TLocal(tv)}, [arg]) if (tv.id == tvarYield.id):
         ss(PartialCfg.mkYield(catches, arg));
       case TCall({expr: TLocal(tv)}, []) if (tv.id == tvarSuspend.id):
@@ -233,6 +236,14 @@ class Analyser {
             expr: TVar(lhs, null),
           })),
           ss(PartialCfg.mkSync(catches, call)),
+          ss(PartialCfg.mkBreak(catches)),
+        ]);
+      case TCall({expr: TField(_, fa)}, args) if (isPecanAccept(fa)):
+        var tf = fieldToFunc(fa);
+        insertRet(args, tf, null);
+        insertSelf(args, tf);
+        strand([
+          ss(PartialCfg.mkSync(catches, e)),
           ss(PartialCfg.mkBreak(catches)),
         ]);
       case TLocal(tv) if (
@@ -470,6 +481,8 @@ class Analyser {
           first: ret.first,
           last: after,
         };
+      case TReturn(e):
+        ss(PartialCfg.mkHalt(catches, e));
       case _: ss(PartialCfg.mkSync(catches, e));
     });
   }

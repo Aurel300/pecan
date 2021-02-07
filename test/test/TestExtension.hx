@@ -62,12 +62,12 @@ class TestExtension extends Test {
 }
 
 class Extra {
-  @:pecan.action public static function delay<T, U>(delay:Int, ?co:pecan.ICo<T, U>):Void {
+  @:pecan.action public static function delay<T, U, V>(delay:Int, ?co:pecan.ICo<T, U, V>):Void {
     haxe.Timer.delay(co.wakeup, delay);
     co.suspend();
   }
 
-  @:pecan.accept public static function accept<T, U>(delay:Int, ?ret:Int->Void, ?co:pecan.ICo<T, U>):Int {
+  @:pecan.accept public static function accept<T, U, V>(delay:Int, ?ret:Int->Void, ?co:pecan.ICo<T, U, V>):Int {
     haxe.Timer.delay(() -> {
       ret(42);
       co.wakeup();
@@ -76,11 +76,11 @@ class Extra {
     return 0;
   }
 
-  @:pecan.action public static function nop<T, U>(?co:pecan.ICo<T, U>):Void {}
+  @:pecan.action public static function nop<T, U, V>(?co:pecan.ICo<T, U, V>):Void {}
 }
 
 class ExtraStaticExtension {
-  @:pecan.action public static function delay<T, U>(delay:Int, ?co:pecan.ICo<T, U>):Void {
+  @:pecan.action public static function delay<T, U, V>(delay:Int, ?co:pecan.ICo<T, U, V>):Void {
     haxe.Timer.delay(co.wakeup, delay);
     co.suspend();
   }
@@ -93,7 +93,7 @@ class ExtraInstance {
     this.time = time;
   }
 
-  @:pecan.action public function delay<T, U>(?co:pecan.ICo<T, U>):Void {
+  @:pecan.action public function delay<T, U, V>(?co:pecan.ICo<T, U, V>):Void {
     haxe.Timer.delay(co.wakeup, time);
     co.suspend();
   }

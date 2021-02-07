@@ -27,6 +27,13 @@ class Syntax {
           _co.tick();
           _co;
         };
+      case EUnop(OpNot, false, e = {expr: EFunction(_, f)}):
+        f.expr = process(f.expr);
+        macro {
+          var _co = pecan.Co.co($e, null, null).run();
+          _co.tick();
+          _co;
+        };
       case _: ExprTools.map(e, process);
     });
   }

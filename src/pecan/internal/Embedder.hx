@@ -60,10 +60,13 @@ class Embedder {
           cases.iter(c -> c.values.iter(findUses));
         case Accept(v, _): use(v, state);
         case Yield(e, _): findUses(e);
+        case Halt(e): findUses(e);
         case _:
       }
     }
     function replaceDecls(e:TypedExpr):TypedExpr {
+      if (e == null)
+        return null;
       return (switch (e.expr) {
         case TVar(v, expr) if (varsUsed[v.id].count() > 1):
           locals.push(tdeclare(v));
@@ -85,6 +88,7 @@ class Embedder {
             nextDef
           );
         case Yield(e, next): Yield(replaceDecls(e), next);
+        case Halt(e): Halt(replaceDecls(e));
         case _: state.kind;
       });
     }
@@ -158,6 +162,8 @@ class Embedder {
       @:privateAccess _pecan_self.accepts;
       @:privateAccess _pecan_self.yields;
       @:privateAccess _pecan_self.labels;
+      @:privateAccess _pecan_self.returnedValue;
+      @:privateAccess _pecan_self.onHalt;
     };
     switch (retFuncUntyped.expr) {
       case EFunction(_, f):
@@ -178,6 +184,8 @@ class Embedder {
     var selfAccessAccepts;
     var selfAccessYields;
     var selfAccessLabels;
+    var selfAccessReturned;
+    var selfAccessOnHalt;
     var retFuncTf = (switch (retFunc.expr) {
       case TFunction(tf = {expr: {expr: TBlock(es)}}):
         switch (ctx.typedBlock.expr) {
@@ -198,6 +206,8 @@ class Embedder {
         selfAccessAccepts = es[7];
         selfAccessYields = es[8];
         selfAccessLabels = es[9];
+        selfAccessReturned = es[10];
+        selfAccessOnHalt = es[11];
         tf;
       case _: throw "!";
     });
@@ -261,12 +271,15 @@ class Embedder {
             t: typeInt,
           }];
         case Accept(v, next):
+          var acceptRet = [
+            tstate(next),
+          ];
+          if (v != null) {
+            acceptRet.unshift(tassign(tlocal(v), tlocal(acceptsFuncTf.args[0].v)));
+          }
           acceptsCases.push({
             values: [tint(stateIdx)],
-            expr: tblock([
-              tassign(tlocal(v), tlocal(acceptsFuncTf.args[0].v)),
-              tstate(next),
-            ]),
+            expr: tblock(acceptRet),
           });
           [
             tassign(selfAccessAccepting, tbool(true)),
@@ -296,12 +309,21 @@ class Embedder {
           [tstate(next)];
         case Join(next): [tstate(next)];
         case Break(next): [tstate(next)];
-        case Halt:
-          [
+        case Halt(e):
+          var ret = [
             tassign(selfAccessTerminated, tbool(true)),
             tassign(selfAccessReady, tbool(false)),
+            {
+              expr: TCall(selfAccessOnHalt, []),
+              pos: pos,
+              t: typeVoid,
+            },
             tint(-1),
           ];
+          if (e != null) {
+            ret.unshift(tassign(selfAccessReturned, e));
+          }
+          ret;
       })),
     } ];
     var invalid = Context.typeExpr(macro throw "invalid state");

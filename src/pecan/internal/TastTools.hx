@@ -12,6 +12,7 @@ class TastTools {
   public static var typeFloat = Context.resolveType((macro : Float), (macro null).pos);
   public static var typeBool = Context.resolveType((macro : Bool), (macro null).pos);
   public static var typeVoid = Context.resolveType((macro : Void), (macro null).pos);
+  public static var typeAny = Context.resolveType((macro : Any), (macro null).pos);
 
   public static function tint(n:Int):TypedExpr {
     return {
@@ -105,18 +106,19 @@ class TastTools {
     };
   }
 
-  public static function tblock(es:Array<TypedExpr>, ?pos:Position):TypedExpr {
-    if (es.length == 0)
-      throw "!";
-    if (pos == null)
-      pos = es[0].pos;
+  public static function tblock(es:Array<TypedExpr>, ?cpos:Position):TypedExpr {
+    if (cpos == null)
+      cpos = es.length > 0 ? es[0].pos : pos;
+    if (es.length == 0) {
+      return {pos: cpos, t: typeVoid, expr: TBlock([])};
+    }
     es = es.map(e -> switch (e.expr) {
       case TBlock(es): es;
       case _: [e];
     }).flatten();
     if (es.length == 1)
       return es[0];
-    return {pos: pos, t: es[0].t, expr: TBlock(es)};
+    return {pos: cpos, t: es[0].t, expr: TBlock(es)};
   }
 }
 

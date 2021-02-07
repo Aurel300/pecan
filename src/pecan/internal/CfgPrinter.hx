@@ -65,7 +65,9 @@ class CfgPrinter {
         case Label(label, next): out.add('Label($label) -> C${num(next)}');
         case Join(next): out.add('Join -> C${num(next)}');
         case Break(next): out.add('Break -> C${num(next)}');
-        case Halt: out.add("Halt");
+        case Halt(e):
+          out.add("Halt\n");
+          tab(e);
       }
       var c = arr[i].catches;
       while (c != null) {

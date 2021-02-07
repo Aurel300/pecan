@@ -29,8 +29,8 @@ enum CfgKind<T> {
   Join(next:T);
   // Break in synchronous actions to check current state when executing.
   Break(next:T);
-  // Terminate the coroutine.
-  Halt;
+  // Terminate the coroutine, optionally with a return value.
+  Halt(?e:TypedExpr);
 }
 
 #end
