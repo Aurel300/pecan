@@ -1,0 +1,29 @@
+{
+  contentPath: "../content",
+  outputPath: "../build",
+  projectTitle: "pecan",
+  documentTitle: "pecan manual",
+  repository: "https://github.com/Aurel300/pecan/",
+  contribute: "https://github.com/Aurel300/pecan/blob/gh-pages-src/content/",
+  copyright: "&copy; 2019-2021 Aurel Bílý",
+  linkHandlers: [
+    {
+      startsWith: "issue:",
+      href: "https://github.com/Aurel300/pecan/issues/$1",
+      ext: true,
+    }, {
+      startsWith: "repo:",
+      endsWith: "/",
+      ext: true,
+      href: "https://github.com/Aurel300/pecan/tree/master/$1",
+    }, {
+      startsWith: "repo:",
+      ext: true,
+      href: "https://github.com/Aurel300/pecan/blob/master/$1",
+    }, {
+      startsWith: "api:",
+      ext: true,
+      href: "https://api.haxe.org/$1.html",
+    },
+  ],
+}
