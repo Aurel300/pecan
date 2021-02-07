@@ -1,0 +1,76 @@
+<!DOCTYPE html><html><head>
+	<title>Suspending calls – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Suspending calls</h2><p>The ability to suspend and later resume execution is the most important aspect of a coroutine. There are multiple ways to suspend a coroutine:</p>
+<ul>
+<li><a href="features-suspending.html#suspend" title="Suspending calls"><code>suspend()</code></a>,</li>
+<li><a href="features-suspending.html#terminate" title="Suspending calls"><code>terminate()</code></a>,</li>
+<li><a href="features-io.html#input" title="Input and output"><code>accept()</code></a> or <a href="features-io.html#output" title="Input and output"><code>yield(...)</code></a>, or</li>
+<li>a call to a <a href="features-suspending.html#custom" title="Suspending calls"><code>@:pecan.action</code></a> or <a href="features-io.html#custom" title="Input and output"><code>@:pecan.accept</code> function</a></li>
+</ul>
+<h3 id="suspend"><code>suspend()</code></h3><p>The <code>suspend()</code> call is always available within a coroutine body. It simply suspends the coroutine until it is woken up again externally with a <a href="api-pecan-ico.html#wakeup" title="pecan.ICo"><code>wakeup()</code></a> call.</p>
+<div class="example">
+
+<h3>Example: <code>suspend()</code> call</h3><pre><code class="language-haxe">var co = pecan.Co.co({
+  trace(1);
+  suspend();
+  trace(3);
+}).run();
+trace(2);
+co.wakeup();
+// output: 1, 2, 3</code></pre>
+</div>
+
+<h3 id="terminate"><code>terminate()</code></h3><p>The <code>terminate()</code> call stops execution of the coroutine immediately, and prevents it from being woken up again. No error is thrown and the <a href="features-states.html#return" title="States"><code>returned</code> field</a> is not updated.</p>
+<div class="example">
+
+<h3>Example: <code>terminate()</code> call</h3><pre><code class="language-haxe">var co = pecan.Co.co({
+  trace(1);
+  suspend();
+  terminate();
+  trace(3);
+}).run();
+trace(2);
+co.wakeup();
+// output: 1, 2</code></pre>
+</div>
+
+<h3 id="custom">Custom suspending functions</h3><p>It is possible to declare methods as suspending. These methods must:</p>
+<ul>
+<li>have the <code>:pecan.action</code> metadata and</li>
+<li>take the coroutine <a href="api-pecan-ico.html" title="pecan.ICo"><code>pecan.ICo&lt;...&gt;</code></a> as their last argument, ideally optional.</li>
+</ul>
+<p>Functions declared this way can then be called from within coroutines, with the last argument being replaced by the coroutine instance automatically.</p>
+<div class="example">
+
+<h3>Example: <code>haxe.Timer.delay</code> as a suspending function</h3><pre><code class="language-haxe">class Foobar {
+  @:pecan.action public static function delay(
+    ms:Int,
+    ?co:pecan.ICo&lt;Any, Any, Any&gt;
+  ):Void {
+    haxe.Timer.delay(co.wakeup, ms);
+    co.suspend();
+  }
+}</code></pre>
+<p>Usage:</p>
+<pre><code class="language-haxe">pecan.Co.co({
+  trace(&quot;Hello,&quot;);
+  Foobar.delay(1000); // one second delay
+  trace(&quot;Haxe!&quot;);
+}).run();</code></pre>
+</div>
+
+<p>Note that a <code>@:pecan.action</code> function is not automatically suspending. If there is no <a href="api-pecan-ico.html#suspend" title="pecan.ICo"><code>co.suspend()</code></a> call, the coroutine will continue after the call as usual.</p>
+</main>
+	<a id="page-prev" href="features-invoking.html">« Previous: Invoking</a>
+	<a id="page-next" href="features-io.html">Next: Input and output »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/02-features.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

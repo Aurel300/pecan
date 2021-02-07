@@ -1,0 +1,29 @@
+<!DOCTYPE html><html><head>
+	<title>Type system – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Type system</h2><h3>Factory type</h3><p>Every occurrence of <code>pecan.Co.co(...)</code> internally declares a new class that is a <em>factory</em> for instances of the created coroutine. This class cannot implement any particular interface, because every coroutine declaration may have a different number of arguments. Informally, the interface is:</p>
+<pre><code class="language-haxe">interface CoFactory&lt;T&gt; { // T is the coroutine instance type
+  function run(args...):T;
+  function runSuspended(args...):T;
+}</code></pre>
+<h3>Instance type</h3><p>Every occurrence of <code>pecan.Co.co(...)</code> also declares an <em>instance</em> type. An instance represents a called coroutine and it is responsible for storing its internal state.</p>
+<p>Every coroutine instance type implements the <a href="api-pecan-ico.html" title="pecan.ICo">interface <code>pecan.ICo&lt;TIn, TOut, TRet&gt;</code></a>, where:</p>
+<ul>
+<li><code>TIn</code> is the input type (the type returned by <a href="features-io.html" title="Input and output"><code>accept()</code> calls</a>) or <code>Void</code>,</li>
+<li><code>TOut</code> is the output type (the argument provided to <a href="features-io.html" title="Input and output"><code>yield(...)</code> calls</a>) or <code>Void</code>, and</li>
+<li><code>TRet</code> is the return type.</li>
+</ul>
+<p>A <code>Void</code> return type is always replaced by <a href="https://github.com/Aurel300/pecan/blob/master/src/pecan/Void.hx" target="_blank"><code>pecan.Void</code></a>, to avoid issues with <code>Void cannot be used as a value</code> errors in Haxe.</p>
+</main>
+	<a id="page-prev" href="overview.html">« Previous: Overview</a>
+	<a id="page-next" href="history.html">Next: History »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/04-implementation.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

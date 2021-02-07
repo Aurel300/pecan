@@ -1,0 +1,30 @@
+<!DOCTYPE html><html><head>
+	<title>pecan.CoTools – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2><code>pecan.CoTools</code></h2><p><code>pecan.CoTools</code> provides static extension to <code>pecan.ICo&lt;...&gt;</code> instances. It is added to coroutine instances using <code>@:using(...)</code>, so it need <em>not</em> be imported with <code>using pecan.CoTools;</code>.</p>
+<h3><code>public static function await&lt;T&gt;(waitFor):T</code></h3><p>This is a <a href="features-io.html#custom" title="Input and output"><code>@:pecan.accept</code></a> function that can be used from within a coroutine to wait for the completion of another coroutine.</p>
+<div class="example">
+
+<h3>Example: <code>await</code> usage</h3><pre><code class="language-haxe">var a = pecan.Co.co(function():String {
+  suspend();
+  return &quot;Haxe&quot;;
+}).run();
+var b = pecan.Co.co({
+  var result = a.await();
+  trace(&#39;Hello, $result!&#39;);
+}).run();
+a.wakeup(); // output: Hello, Haxe!</code></pre>
+</div>
+</main>
+	<a id="page-prev" href="api-pecan-ico.html">« Previous: pecan.ICo</a>
+	<a id="page-next" href="implementation.html">Next: Implementation details »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/03-api.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

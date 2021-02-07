@@ -1,0 +1,46 @@
+<!DOCTYPE html><html><head>
+	<title>Overview – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Overview</h2><p>A <code>pecan.Co.co(...)</code> (or any of the syntax shorthands) will perform the following steps:</p>
+<ul>
+<li>If the expression was a function, remember the arguments and continue with the body of the function.</li>
+<li>Check the I/O types and normalise them.<ul>
+<li>Types are normalised with <a href="https://api.haxe.org/haxe/macro/Context.html#resolveType" target="_blank"><code>resolveType</code></a>, followed by <a href="https://api.haxe.org/haxe/macro/Context.html#toComplexType" target="_blank"><code>toComplexType</code></a>.</li>
+</ul>
+</li>
+<li>Define the instance type of the coroutine.<ul>
+<li>This type must be defined quite early so that the coroutine can access its own instance when typing the body expression.</li>
+</ul>
+</li>
+<li>Type a function of the form <code>function(reserved..., args...) { body; }</code>.<ul>
+<li><code>reserved...</code> are <code>pecan</code>-reserved identifiers, such as <code>suspend</code> or <code>accept</code>. These must be in context for the <code>body</code> to type properly.</li>
+</ul>
+</li>
+<li>Canonise the typed AST.<ul>
+<li>This step converts expressions into a larger number of simpler expressions and many temporary variables. This allows the analysis performed in the next step to be simpler. For example, any <code>accept()</code> call will end up in its own &quot;statement&quot; or in a <code>somevar = accept()</code> assignment.</li>
+</ul>
+</li>
+<li>Convert the AST into a graph by performing <a href="https://en.wikipedia.org/wiki/Control_flow_analysis" target="_blank">control flow analysis</a>.</li>
+<li>Embed the graph back into the untyped AST as a state machine.<ul>
+<li>The embedding is a closure that first defines variables that are used from multiple CFG states, then defines the behaviour of <code>accept</code>, <code>yield</code> and the coroutine itself as a set of functions, each of which is approximately in the form <code>while (validState) currentState = (switch (currentState) { ... })</code>. The cases of the <code>switch</code> correspond to CFG nodes.</li>
+</ul>
+</li>
+<li>Define the factory type of the coroutine.</li>
+<li>Return an expression of the form <code>new Factory((co, args...) -&gt; { ... })</code>.<ul>
+<li>The embedded graph is the closure given as a parameter to the factory. This allows closure semantics, i.e. the coroutine can access variables defined outside its own body.</li>
+</ul>
+</li>
+</ul>
+</main>
+	<a id="page-prev" href="implementation.html">« Previous: Implementation details</a>
+	<a id="page-next" href="implementation-types.html">Next: Type system »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/04-implementation.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

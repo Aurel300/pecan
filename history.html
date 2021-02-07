@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><head>
+	<title>History – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>History</h2><p>The current version of <code>pecan</code> is my second attempt at macro-based Haxe coroutines. The paper <a href="https://2018.ecoop.org/details/ecoop-2018-papers/14/Theory-and-Practice-of-Coroutines-with-Snapshots" target="_blank">&quot;Theory and Practice of Coroutines with Snapshots&quot;</a> (A. Prokopec and F. Liu, ECOOP 2018) provided a source of inspiration for some aspects of the current implementation.</p>
+<p>The first version (archived on GitHub in commit <a href="https://github.com/Aurel300/pecan/commit/c6c1a751307976b6f6abfdb63954ac574ab4002f" target="_blank"><code>c6c1a75</code></a>) was based on transforming the untyped AST. This approach had many problems, required explicit type annotations in many places that Haxe would normally infer, and could not handle many parts of Haxe syntax, such as <code>try ... catch</code> blocks.</p>
+</main>
+	<a id="page-prev" href="implementation-types.html">« Previous: Type system</a>
+	
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/04-implementation.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

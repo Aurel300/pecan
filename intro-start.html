@@ -1,0 +1,53 @@
+<!DOCTYPE html><html><head>
+	<title>Getting started – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Getting started</h2><p>Here is an example of <code>pecan</code> usage. For a more in-depth look into each of the annotated features, see the following chapters.</p>
+<pre><code class="language-haxe">var factory = pecan.Co.co({   // (1)
+  var greeted = 0;
+  trace(&quot;Greeter online!&quot;);
+  suspend();                  // (2)
+  while (true) {              // (3)
+    var name = accept();      // (4)
+    if (name == null)
+      break;
+    trace(&#39;Hello, $name!&#39;);
+    yield(++greeted);         // (5)
+  }
+  trace(&quot;Bye!&quot;);
+}, (_ : String), (_ : Int));  // (6)
+
+var instance = co.run();      // (7)
+                              // output: Greeter online!
+instance.wakeup();            // (8)
+instance.give(&quot;world&quot;);       // (9)
+                              // output: Hello, world!
+instance.take() == 1;         // (10)
+instance.give(&quot;Haxe&quot;);        // output: Hello, Haxe!
+instance.take() == 2;
+instance.give(null);          // output: Bye!
+instance.state == Terminated; // (11)</code></pre>
+<p>There are several things to note in the example:</p>
+<ul>
+<li><code>(1)</code>: <code>pecan.Co.co</code> is one way to <em>declare</em> a coroutine. This is analogous to a function declaration. See <a href="features-declaration.html" title="Declaration">declaration</a>.</li>
+<li><code>(2)</code>: coroutines can be <em>suspended</em> and later resumed at arbitrary points, unlike regular functions, which have to run to completion. See <a href="features-suspending.html" title="Suspending calls">suspending calls</a>.</li>
+<li><code>(3)</code>: coroutines can make use of any Haxe syntax, even if there are suspension points within.</li>
+<li><code>(4)</code> and <code>(5)</code>: <code>accept()</code> and <code>yield(...)</code> can be used to communicate from within the coroutine in a blocking manner. See <a href="features-io.html" title="Input and output">input and output</a>.</li>
+<li><code>(6)</code>: input and output types (for <code>accept()</code> and <code>yield(...)</code>, respectively), must be explicitly declared. See <a href="features-declaration.html" title="Declaration">declaration</a> and <a href="features-io.html" title="Input and output">input and output</a>.</li>
+<li><code>(7)</code>: a coroutine is actually started with a <code>run(...)</code> call. This is analogous to a function call. See <a href="features-invoking.html" title="Invoking">invoking</a>.</li>
+<li><code>(8)</code>: coroutines suspended with a <code>suspend()</code> call can be resumed with a <code>wakeup()</code> call. See <a href="features-suspending.html" title="Suspending calls">suspending calls</a>.</li>
+<li><code>(9)</code> and <code>(10)</code>: <code>give(...)</code> and <code>take()</code> complement the coroutine I/O operations. <code>give(...)</code> is used to provide values to a coroutine that has called <code>accept()</code>, <code>take()</code> is used to take values from a coroutine that has called <code>yield(...)</code>.</li>
+<li><code>(11)</code>: see <a href="features-states.html" title="States">states</a>.</li>
+</ul>
+</main>
+	<a id="page-prev" href="intro-installation.html">« Previous: Installation</a>
+	<a id="page-next" href="features.html">Next: Features »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/01-introduction.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

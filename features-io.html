@@ -1,0 +1,74 @@
+<!DOCTYPE html><html><head>
+	<title>Input and output – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Input and output</h2><p>Coroutines can <code>accept()</code> inputs and <code>yield(...)</code> outputs. To ensure type safety, the types for inputs and outputs must be declared as part of the <code>co</code> macro call (see <a href="features-declaration.html" title="Declaration">declaration</a>).</p>
+<h3 id="input">Input</h3><p>Within coroutine code, <code>accept()</code> can be used to accept input of the declared type. The call suspends the coroutine until the value is available.</p>
+<div class="example">
+
+<h3>Example: <code>accept()</code> usage</h3><pre><code class="language-haxe">var greeter = pecan.Co.co({
+  trace(&#39;Hello, ${accept()}, from ${accept()}!&#39;);
+}, (_ : String)).run();
+greeter.give(&quot;Haxe&quot;);
+greeter.give(&quot;pecan&quot;); // output: Hello, Haxe, from pecan!</code></pre>
+</div>
+
+<p>All <code>accept()</code> calls within an expression are evaluated before the expression itself. The evaluation order of complex expressions involving calls to <code>accept()</code> and other functions may therefore be different than expected. Boolean operators with <code>accept()</code> will not short-circuit.</p>
+<h3 id="output">Output</h3><p>Within coroutine code, <code>yield(...)</code> can be used to provide output from the coroutine. The call suspends the coroutine until the value is taken.</p>
+<div class="example">
+
+<h3>Example: <code>yield(...)</code> usage</h3><pre><code class="language-haxe">var languages = pecan.Co.co({
+  yield(&quot;Haxe&quot;);
+  yield(&quot;Haxe 4&quot;);
+}, null, (_ : String)).run();
+trace(&#39;${languages.take()} is awesome!&#39;); // output: Haxe is awesome!
+trace(&#39;${languages.take()} is awesome!&#39;); // output: Haxe 4 is awesome!</code></pre>
+</div>
+
+<h3 id="custom">Custom input functions</h3><p>It is possible to declare methods similar to <code>accept</code>. These methods must:</p>
+<ul>
+<li>have the <code>:pecan.accept</code> metadata;</li>
+<li>take the coroutine <a href="api-pecan-ico.html" title="pecan.ICo"><code>pecan.ICo&lt;...&gt;</code></a> as their last argument, ideally optional;</li>
+<li>take a function <code>T-&gt;Void</code> as their second-to-last argument, ideally optional; and</li>
+<li>have a return type of the same type <code>T</code>.</li>
+</ul>
+<p>Functions declared this way can then be called from within coroutines, with the last two arguments filled in automatically. The second-to-last argument is how the custom input function provides the &quot;real&quot; return value.</p>
+<blockquote>
+<p>The return value of the function is never used! It is only used for type inference. Returning <code>null</code> (or a default value on static targets) is recommended.</p>
+</blockquote>
+<div class="example">
+
+<h3>Example: delay that eventually returns a <code>String</code></h3><pre><code class="language-haxe">class Foobar {
+  @:pecan.accept public static function acceptDelay(
+    ms:Int,
+    ?ret:String-&gt;Void,
+    ?co:pecan.ICo&lt;Any, Any, Any&gt;
+  ):String {
+    haxe.Timer.delay(() -&gt; {
+      ret(&quot;foo&quot;);
+      co.wakeup();
+    }, ms);
+    co.suspend();
+    return null;
+  }
+}</code></pre>
+<p>Usage:</p>
+<pre><code class="language-haxe">pecan.Co.co({
+  trace(&quot;Hello,&quot;);
+  var x = Foobar.acceptDelay(1000);
+  trace(x); // output: foo
+}).run();</code></pre>
+</div>
+
+</main>
+	<a id="page-prev" href="features-suspending.html">« Previous: Suspending calls</a>
+	<a id="page-next" href="features-labels.html">Next: Labels »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/02-features.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

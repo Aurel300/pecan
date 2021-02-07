@@ -1,0 +1,46 @@
+<!DOCTYPE html><html><head>
+	<title>Invoking – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Invoking</h2><p>To invoke a declared coroutine, call <code>run(...)</code>. The arguments of <code>run</code> correspond to the arguments declared in the coroutine. The <code>run</code> call returns an instance of the coroutine, which will be of type <a href="api-pecan-ico.html" title="pecan.ICo"><code>pecan.ICo&lt;...&gt;</code></a>.</p>
+<div class="example">
+
+<h3>Example: <code>run()</code> call with no arguments</h3><pre><code class="language-haxe">var noArgs = pecan.Co.co({
+  trace(&quot;no arguments...&quot;);
+});
+noArgs.run(); // output: no arguments...
+noArgs.run(); // output: no arguments...</code></pre>
+</div>
+
+<div class="example">
+
+<h3>Example: <code>run(...)</code> call with arguments</h3><pre><code class="language-haxe">withArgs = pecan.Co.co((a:String) -&gt; {
+  trace(&#39;called with $a&#39;);
+});
+withArgs.run(&quot;x&quot;); // output: called with x
+withArgs.run(&quot;y&quot;); // output: called with y</code></pre>
+</div>
+
+<p>By default, <code>run(...)</code> will start and immediately <a href="api-pecan-ico.html#tick" title="pecan.ICo"><code>tick()</code></a> the coroutine. If instead the coroutine should be started in a <a href="features-states.html" title="States">suspended state</a>, the <code>runSuspended(...)</code> method with the same signature can be used.</p>
+<div class="example">
+
+<h3>Example: <code>runSuspended()</code></h3><pre><code class="language-haxe">var factory = pecan.Co.co({ trace(&quot;2&quot;); });
+var instance = factory.runSuspended();
+trace(&quot;1&quot;);
+instance.tick();
+trace(&quot;3&quot;);
+// output: 1, 2, 3</code></pre>
+</div>
+
+</main>
+	<a id="page-prev" href="features-declaration.html">« Previous: Declaration</a>
+	<a id="page-next" href="features-suspending.html">Next: Suspending calls »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/02-features.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

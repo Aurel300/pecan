@@ -1,0 +1,38 @@
+<!DOCTYPE html><html><head>
+	<title>States – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>States</h2><p>Any coroutine instance is in one of the following states, which can be checked with the <a href="api-pecan-ico.html#state" title="pecan.ICo"><code>state</code></a> variable:</p>
+<ul>
+<li><code>Ready</code> - running or just created with <a href="features-invoking.html" title="Invoking"><code>runSuspended(...)</code></a> and not yet <code>tick()</code>ed.</li>
+<li><code>Suspended</code> - suspended with a <a href="features-suspending.html" title="Suspending calls"><code>suspend()</code></a> call (or similar).</li>
+<li><code>Accepting</code> - waiting for a value after an <a href="features-io.html#input" title="Input and output"><code>accept()</code></a> call.</li>
+<li><code>Yielding</code> - waiting to provide a value with a <a href="features-io.html#output" title="Input and output"><code>yield(...)</code></a> call.</li>
+<li><code>Terminated</code> - finished, cannot be woken up again.</li>
+</ul>
+<h3 id="return">Return value</h3><p>If a coroutine had a return type declared and it terminated with a <code>return</code> statement, the returned value is available in the <a href="api-pecan-ico.html#returned" title="pecan.ICo"><code>returned</code></a> field. Otherwise, the field is set to <code>null</code>. Coroutines that return <code>Void</code> will have <code>returned</code> with a type of <code>pecan.Void</code>.</p>
+<div class="example">
+
+<h3>Example: <code>returned</code> usage</h3><pre><code class="language-haxe">var adder = pecan.Co.co(function():String {
+  var x = accept();
+  var y = accept();
+  return &#39;$x + $y = ${x + y}&#39;;
+}, (_ : Int));
+
+var instance = adder.run();
+instance.give(1);
+instance.give(2);
+trace(instance.returned); // output: 1 + 2 = 3</code></pre>
+</div>
+</main>
+	<a id="page-prev" href="features-labels.html">« Previous: Labels</a>
+	<a id="page-next" href="api.html">Next: API »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/02-features.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html><html><head>
+	<title>Declaration – pecan manual</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="css/style.css" media="all">
+</head><body>
+	<header><a href="index.html"><h1>pecan</h1></a></header>
+	<nav id="menu"><ul><li><a href="index.html">Introduction</a></li><ul><li><a href="intro-installation.html">Installation</a></li></ul><ul><li><a href="intro-start.html">Getting started</a></li></ul></ul><ul><li><a href="features.html">Features</a></li><ul><li><a href="features-declaration.html">Declaration</a></li></ul><ul><li><a href="features-invoking.html">Invoking</a></li></ul><ul><li><a href="features-suspending.html">Suspending calls</a></li></ul><ul><li><a href="features-io.html">Input and output</a></li></ul><ul><li><a href="features-labels.html">Labels</a></li></ul><ul><li><a href="features-states.html">States</a></li></ul></ul><ul><li><a href="api.html">API</a></li><ul><li><a href="api-pecan-ico.html">pecan.ICo</a></li></ul><ul><li><a href="api-pecan-cotools.html">pecan.CoTools</a></li></ul></ul><ul><li><a href="implementation.html">Implementation details</a></li><ul><li><a href="overview.html">Overview</a></li></ul><ul><li><a href="implementation-types.html">Type system</a></li></ul><ul><li><a href="history.html">History</a></li></ul></ul></nav>
+	<main><h2>Declaration</h2><p>Coroutines are declared using the <code>pecan.Co.co</code> expression macro. The macro takes between 1 and 3 arguments:</p>
+<ol>
+<li>the body of the coroutine,</li>
+<li>(optional) the input type, and</li>
+<li>(optional) the output type.</li>
+</ol>
+<p>The 1st argument can either be a Haxe expression (usually a block expression), or a function. The latter case allows declaring arguments (see <a href="features-invoking.html" title="Invoking">invoking</a>) and return types (see <a href="features-states.html#return" title="States">states</a>).</p>
+<blockquote>
+<p>Note that a non-<code>Void</code> return type must be declared explicitly, as it cannot be inferred. This may be fixed in later versions of <code>pecan</code>.</p>
+</blockquote>
+<p>Within the code block, these variables and functions are implicitly available:</p>
+<ul>
+<li><code>self</code> - refers to the current instance of <a href="api-pecan-ico.html" title="pecan.ICo"><code>pecan.ICo&lt;...&gt;</code></a>.</li>
+<li><code>suspend()</code> and <code>terminate()</code> - see <a href="features-suspending.html" title="Suspending calls">suspending</a>.</li>
+<li><code>accept()</code> and <code>yield(...)</code> - see <a href="features-io.html" title="Input and output">I/O</a>.</li>
+<li><code>label(...)</code> - see <a href="features-labels.html" title="Labels">labels</a>.</li>
+</ul>
+<div class="example">
+
+<h3>Example: coroutine declarations and arguments</h3><pre><code class="language-haxe">// takes two arguments (whose types are inferred), returns `Void`
+pecan.Co.co((a, b) -&gt; { ... });
+
+// takes two arguments (second is optional), returns `String`
+pecan.Co.co(function(a, ?b:Int):String { ... });</code></pre>
+</div>
+
+<p>Both the 2nd and 3rd arguments may be <code>null</code> or <code>(_ : T)</code> where <code>T</code> is a type.</p>
+<div class="example">
+
+<h3>Example: combinations of I/O types</h3><pre><code class="language-haxe">// no input or output:
+pecan.Co.co({ ... });
+// input but no output:
+pecan.Co.co({ ... }, (_ : Int));
+// output but no input:
+pecan.Co.co({ ... }, null, (_ : Int));
+// both input and output
+pecan.Co.co({ ... }, (_ : Int), (_ : Int));</code></pre>
+</div>
+
+<h3>Syntax helpers</h3><p><code>pecan</code> provides some syntax shorthands. To use it within a class, implement the interface <code>pecan.Syntax</code>.</p>
+<div class="example">
+
+<h3>Example: using the syntax helper</h3><pre><code class="language-haxe">class Example implements pecan.Syntax { ... }</code></pre>
+</div>
+
+<p>The syntax shorthands are:</p>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>Equivalent to</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>!{ ... }</code></td>
+<td><code>pecan.Co.co({ ... }).run()</code></td>
+</tr>
+<tr>
+<td><code>!function():T { ... }</code></td>
+<td><code>pecan.Co.co(function():T { ... }).run()</code></td>
+</tr>
+<tr>
+<td><code>@:pecan.co(io...) function x(args...):T { ... }</code></td>
+<td><code>function x(args...) return pecan.Co.co(function(args...) { ... }, io...).run(args...);</code></td>
+</tr>
+</tbody></table>
+<div class="example">
+
+<h3>Example: <code>!</code> prefix for immediately invoked coroutines</h3><pre><code class="language-haxe">var co = !{
+  trace(&quot;foo&quot;);
+  suspend();
+  trace(&quot;bar&quot;);
+};
+co.wakeup();</code></pre>
+</div>
+
+<div class="example">
+
+<h3>Example: <code>!</code> prefix for immediately invoked coroutines with return values</h3><pre><code class="language-haxe">var co = !function():String {
+  suspend();
+  return &quot;hello&quot;;
+};
+co.wakeup();</code></pre>
+</div>
+
+<div class="example">
+
+<h3>Example: <code>@:pecan.co</code> methods</h3><p>The syntax also allows declaring class methods as coroutines, using the <code>:pecan.co</code> metadata. The metadata may optionally take up to two arguments, representing the input and output types (same as the 2nd and 3rd arguments of <code>pecan.Co.co</code>):</p>
+<pre><code class="language-haxe">class Example implements pecan.Syntax {
+  @:pecan.co function noInputNoOutput() {
+    suspend();
+    // ...
+  }
+  @:pecan.co((_ : Int)) function acceptsInts() { ... }
+  @:pecan.co(null, (_ : String)) function yieldsStrings() { ... }
+}</code></pre>
+<p>A call to a method thusly annotated is equivalent to a call to <a href="features-invoking.html" title="Invoking"><code>run(...)</code></a>, i.e. it will return a coroutine instance.</p>
+</div>
+
+</main>
+	<a id="page-prev" href="features.html">« Previous: Features</a>
+	<a id="page-next" href="features-invoking.html">Next: Invoking »</a>
+	<footer>
+		<a href="https://github.com/Aurel300/pecan/blob/gh-pages-src/content/02-features.md">Contribute to this page</a>
+		| <a href="https://github.com/Aurel300/pecan/" target="_blank"><code>pecan</code> on GitHub</a>
+		| &copy; 2019-2021 Aurel Bílý
+	</footer>
+</body></html>
