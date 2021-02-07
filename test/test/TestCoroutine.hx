@@ -32,7 +32,7 @@ class TestCoroutine extends Test {
       calls.push(4);
       aeq(calls, [0, 1, 2, 3, 4]);
       async.done();
-    }).run();
+    }).runSuspended();
     calls.push(0);
     c.tick();
     calls.push(2);
@@ -100,7 +100,7 @@ class TestCoroutine extends Test {
       // different type
       var a = "foo";
       eq(a, "foo");
-    }).run().tick();
+    }).run();
     eq(b, 3);
   }
 
@@ -112,7 +112,7 @@ class TestCoroutine extends Test {
       suspend();
       var a = accept();
       yield(0);
-    }, (_ : Int), (_ : Int)).run();
+    }, (_ : Int), (_ : Int)).runSuspended();
     eq(c.state, Ready);
     exc(() -> c.give(0));
     exc(() -> c.take());
@@ -141,7 +141,7 @@ class TestCoroutine extends Test {
     var c = co({
       terminate();
       assert("fail");
-    }, (_ : Int)).run();
+    }, (_ : Int)).runSuspended();
     c.tick();
     eq(c.state, Terminated);
     c.tick();
@@ -221,7 +221,6 @@ class TestCoroutine extends Test {
         eq(1, 0);
       }
     }).run();
-    c.tick();
     c.wakeup();
     c.wakeup();
     c.wakeup();
@@ -239,7 +238,6 @@ class TestCoroutine extends Test {
     var c = co({
       while (false) yield(0);
     }, null, (_ : Int)).run();
-    c.tick();
     eq(c.state, Terminated);
 
     var c = co({
@@ -324,7 +322,6 @@ class TestCoroutine extends Test {
         eq(k, v);
       }
     }).run();
-    c.tick();
     eq(c.state, Terminated);
     */
   }
@@ -339,7 +336,7 @@ class TestCoroutine extends Test {
       eq('${a + 1}', "2");
       var a = 3;
       eq('$a', "3");
-    }).run().tick();
+    }).run();
   }
 
   /**
@@ -350,7 +347,7 @@ class TestCoroutine extends Test {
       eq(a, 1);
       a++;
       eq(a, 2);
-    }).run(1).tick();
+    }).run(1);
     var c = co((a:String, b:Float) -> {
       eq(a, "foo");
       eq(b, 1.0);
@@ -358,31 +355,30 @@ class TestCoroutine extends Test {
       eq(a, "foo");
       eq(b, 1.0);
     }).run("foo", 1.0);
-    c.tick();
     c.wakeup();
     eq(c.state, Terminated);
 
     // optional and default
     co((?a:String) -> {
       eq(a, null);
-    }).run().tick();
+    }).run();
 
     co((?a:String = "foo", ?b:Int = 2) -> {
       eq(a, "foo");
       eq(b, 2);
-    }).run().tick();
+    }).run();
     co((?a:String = "foo", ?b:Int = 2) -> {
       eq(a, "bar");
       eq(b, 4);
-    }).run("bar", 4).tick();
+    }).run("bar", 4);
     co((?a:String = "foo", ?b:Int = 2) -> {
       eq(a, "bar");
       eq(b, 2);
-    }).run("bar").tick();
+    }).run("bar");
     co((?a:String = "foo", ?b:Int = 2) -> {
       eq(a, "foo");
       eq(b, 4);
-    }).run(4).tick();
+    }).run(4);
   }
 
   function testAccept() {
@@ -390,7 +386,6 @@ class TestCoroutine extends Test {
       var a = accept();
       eq(a, 0);
     }, (_ : Int)).run();
-    c.tick();
     c.give(0);
     eq(c.state, Terminated);
 
@@ -398,7 +393,6 @@ class TestCoroutine extends Test {
       var a = accept() + accept();
       eq(a, 3);
     }, (_ : Int)).run();
-    c.tick();
     c.give(1);
     c.give(2);
     eq(c.state, Terminated);
@@ -410,7 +404,6 @@ class TestCoroutine extends Test {
         eq(0, 1);
       }
     }, (_ : Bool)).run();
-    c.tick();
     c.give(true);
     eq(c.state, Terminated);
 
@@ -418,7 +411,6 @@ class TestCoroutine extends Test {
       var a = accept() ? 1 : 0;
       eq(1, 1);
     }, (_ : Bool)).run();
-    c.tick();
     c.give(true);
     eq(c.state, Terminated);
 
@@ -426,14 +418,12 @@ class TestCoroutine extends Test {
       var a = true ? accept() : accept();
       eq(1, 1);
     }, (_ : Int)).run();
-    c.tick();
     c.give(1);
     eq(c.state, Terminated);
 
     var c = co({
       yield(accept() + 1);
     }, (_ : Int), (_ : Int)).run();
-    c.tick();
     c.give(0);
     eq(c.take(), 1);
     eq(c.state, Terminated);
@@ -444,7 +434,7 @@ class TestCoroutine extends Test {
   **/
   function testExpressions() {
     // EConst
-    co(eq(1, 1)).run().tick();
+    co(eq(1, 1)).run();
 
     // EArray
     var c = co(eq([0, 1, 0][accept()], 1), (_ : Int)).run();

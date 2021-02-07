@@ -8,8 +8,25 @@ The type parameter `TIn` represents values that the coroutine can `accept()`,
 represents the return value.
  */
 interface ICo<TIn, TOut, TRet> {
+  /**
+  Current state of the coroutine.
+   */
   var state(get, never):CoState;
+
+  /**
+  Value returned by the coroutine, if available. `null` otherwise.
+   */
   var returned(get, never):Null<TRet>;
+
+  /**
+  Callback invoked when the coroutine terminates in any manner. This field
+  should never be set to `null`.
+
+  Note that adding a callback after a coroutine has finished has no effect.
+  This may be important for coroutines that do not suspend at all between their
+  invocation and their termination. The callback can be set after a
+  `runSuspended(...)` call to avoid this problem.
+   */
   var onHalt:()->Void;
 
   /**
@@ -19,7 +36,7 @@ interface ICo<TIn, TOut, TRet> {
   function tick():Void;
 
   /**
-  Suspends the coroutine, stopping its execution and changing its state to
+  Suspends the coroutine, stopping its execution, and changes its state to
   `Suspended`.
    */
   function suspend():Void;
@@ -30,7 +47,7 @@ interface ICo<TIn, TOut, TRet> {
   function wakeup():Void;
 
   /**
-  Terminated the coroutine, stopping its execution and changing its state to
+  Terminates the coroutine, stopping its execution, and changes its state to
   `Terminated`. A terminated coroutine may not be woken up again.
    */
   function terminate():Void;
@@ -50,8 +67,8 @@ interface ICo<TIn, TOut, TRet> {
   function take():TOut;
 
   /**
-  Goes to a label defined in the coroutine with a `label("...")` point. Throws
-  an exception if the label does not exist.
+  Goes to a label defined in the coroutine with a `label("...")` point, then
+  `tick`. Throws an exception if the label does not exist.
    */
   function goto(label:String):Void;
 }

@@ -13,7 +13,7 @@ class TestExtension extends Test {
       Extra.delay(10);
       done = true;
       async.done();
-    }).run().tick();
+    }).runSuspended().tick();
     eq(done, false);
   }
 
@@ -24,7 +24,7 @@ class TestExtension extends Test {
       10.delay();
       done = true;
       async.done();
-    }).run().tick();
+    }).runSuspended().tick();
     eq(done, false);
   }
 
@@ -36,14 +36,14 @@ class TestExtension extends Test {
       delayer.delay();
       done = true;
       async.done();
-    }).run().tick();
+    }).runSuspended().tick();
     eq(done, false);
   }
 
   function testNop() {
     var c = co({
       Extra.nop();
-    }).run();
+    }).runSuspended();
     c.tick();
     eq(c.state, Terminated);
   }
@@ -56,7 +56,7 @@ class TestExtension extends Test {
       done = true;
       eq(x, 42);
       async.done();
-    }).run().tick();
+    }).runSuspended().tick();
     eq(done, false);
   }
 }

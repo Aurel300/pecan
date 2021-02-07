@@ -12,8 +12,6 @@ class TestSyntax extends Test implements pecan.Syntax {
 
   function testField() {
     var c = coField(1);
-    eq(c.state, Ready);
-    c.tick();
     eq(c.take(), "x1");
     eq(c.state, Suspended);
     c.wakeup();

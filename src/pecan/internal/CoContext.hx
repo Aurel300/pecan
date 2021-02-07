@@ -265,6 +265,21 @@ class CoContext {
       pos: pos,
       access: [APublic],
       kind: FFun({
+        args: args, // TODO: deduplicate arguments like in Syntax
+        ret: ctCo,
+        expr: macro {
+          var _pecan_ret = @:privateAccess new $tpCo();
+          init($a{[macro _pecan_ret].concat(args.map(a -> macro $i{a.name}))});
+          _pecan_ret.tick();
+          return _pecan_ret;
+        },
+      }),
+    });
+    tdFactory.fields.push({
+      name: "runSuspended",
+      pos: pos,
+      access: [APublic],
+      kind: FFun({
         args: args,
         ret: ctCo,
         expr: macro {
