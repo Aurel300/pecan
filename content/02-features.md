@@ -13,9 +13,7 @@ Coroutines are declared using the `pecan.Co.co` expression macro. The macro take
  2. (optional) the input type, and
  3. (optional) the output type.
 
-The 1st argument can either be a Haxe expression (usually a block expression), or a function. The latter case allows declaring arguments (see [invoking](features-invoking)) and return types (see [states](features-states#return)).
-
-> Note that a non-`Void` return type must be declared explicitly, as it cannot be inferred. This may be fixed in later versions of `pecan`.
+The 1st argument can either be a Haxe expression (usually a block expression), or a function. The latter case allows declaring arguments (see [invoking](features-invoking)) and explicitly annotating return types (see [states](features-states#return)).
 
 Within the code block, these variables and functions are implicitly available:
 
@@ -92,7 +90,7 @@ co.wakeup();
 
 <div class="example">
 
-### Example: `!` prefix for immediately invoked coroutines with return values
+### Example: `!` prefix for immediately invoked coroutines with explicit return type
 
 ```haxe
 var co = !function():String {
@@ -101,6 +99,8 @@ var co = !function():String {
 };
 co.wakeup();
 ```
+
+Note that the return type is inferred, so this example would work without the `function` as well. However, there may be some cases where an explicit type hint is required for correct compilation.
 </div>
 
 <div class="example">
@@ -391,7 +391,7 @@ Any coroutine instance is in one of the following states, which can be checked w
 <!--sublabel:return-->
 ### Return value
 
-If a coroutine had a return type declared and it terminated with a `return` statement, the returned value is available in the [`returned`](api-pecan-ico#returned) field. Otherwise, the field is set to `null`. Coroutines that return `Void` will have `returned` with a type of `pecan.Void`.
+If a coroutine terminated with a `return` statement, the returned value is available in the [`returned`](api-pecan-ico#returned) field. Otherwise, the field is set to `null`. Coroutines that return `Void` will have `returned` with a type of `pecan.Void`.
 
 <div class="example">
 
