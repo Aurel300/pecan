@@ -15,13 +15,7 @@ The type parameter `TIn` represents values that the coroutine can `accept()`, `T
 <!--sublabel:state-->
 ### `public var state(get, never):pecan.CoState`
 
-Current state of the coroutine.
-
- - `Ready` - ready to execute actions, can be invoked to run with `tick`.
- - `Suspended` - (temporarily) suspended, may wake up later to become `Ready`.
- - `Terminated` - no more actions will be executed.
- - `Accepting` - waiting for a value of type `TIn`, can be provided with `give`.
- - `Yielding` - ready to give a value of type `TOut`, can be accepted with `take`.
+Current state of the coroutine. See [states](features-states).
 
 <!--sublabel:returned-->
 ### `public var returned(get, never):Null<TRet>`

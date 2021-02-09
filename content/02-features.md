@@ -27,7 +27,7 @@ Within the code block, these variables and functions are implicitly available:
 ### Example: coroutine declarations and arguments
 
 ```haxe
-// takes two arguments (whose types are inferred), returns `Void`
+// takes two arguments whose types are inferred, return type is also inferred
 pecan.Co.co((a, b) -> { ... });
 
 // takes two arguments (second is optional), returns `String`
@@ -320,6 +320,8 @@ Functions declared this way can then be called from within coroutines, with the 
 
 > The return value of the function is never used! It is only used for type inference. Returning `null` (or a default value on static targets) is recommended.
 
+Unlike [custom suspending functions](features-suspending#custom), custom input functions always suspend the coroutine and always wake it up when the value is returned.
+
 <div class="example">
 
 ### Example: delay that eventually returns a `String`
@@ -331,11 +333,7 @@ class Foobar {
     ?ret:String->Void,
     ?co:pecan.ICo<Any, Any, Any>
   ):String {
-    haxe.Timer.delay(() -> {
-      ret("foo");
-      co.wakeup();
-    }, ms);
-    co.suspend();
+    haxe.Timer.delay(() -> ret("foo"), ms);
     return null;
   }
 }
@@ -386,6 +384,7 @@ Any coroutine instance is in one of the following states, which can be checked w
  - `Suspended` - suspended with a [`suspend()`](features-suspending) call (or similar).
  - `Accepting` - waiting for a value after an [`accept()`](features-io#input) call.
  - `Yielding` - waiting to provide a value with a [`yield(...)`](features-io#output) call.
+ - `Expecting` - waiting for a value after a [custom accept call](features-io#custom).
  - `Terminated` - finished, cannot be woken up again.
 
 <!--sublabel:return-->
