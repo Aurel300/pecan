@@ -9,4 +9,5 @@ enum CoState {
   Terminated;
   Accepting;
   Yielding;
+  Expecting;
 }

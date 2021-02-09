@@ -27,8 +27,10 @@ enum CfgKind<T> {
   Label(label:String, next:T);
   // Join separate branches of control-flow expressions.
   Join(next:T);
-  // Break in synchronous actions to check current state when executing.
-  Break(next:T);
+  // External (potentially) suspending call.
+  ExtSuspend(e:TypedExpr, next:T);
+  // External accepting call.
+  ExtAccept(e:TypedExpr, next:T);
   // Terminate the coroutine, optionally with a return value.
   Halt(?e:TypedExpr);
 }

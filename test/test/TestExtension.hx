@@ -6,6 +6,17 @@ import utest.Async;
 using test.TestExtension.ExtraStaticExtension;
 
 class TestExtension extends Test {
+  function testImmediateReturn() {
+    var c = co({
+      Extra.noDelay();
+    }).run();
+    eq(c.state, Terminated);
+    var c = co({
+      eq(42, Extra.acceptNoDelay());
+    }).run();
+    eq(c.state, Terminated);
+  }
+
   function testDelay(async:Async) {
     var done = false;
     co({
@@ -13,7 +24,7 @@ class TestExtension extends Test {
       Extra.delay(10);
       done = true;
       async.done();
-    }).runSuspended().tick();
+    }).run();
     eq(done, false);
   }
 
@@ -24,7 +35,7 @@ class TestExtension extends Test {
       10.delay();
       done = true;
       async.done();
-    }).runSuspended().tick();
+    }).run();
     eq(done, false);
   }
 
@@ -36,7 +47,7 @@ class TestExtension extends Test {
       delayer.delay();
       done = true;
       async.done();
-    }).runSuspended().tick();
+    }).run();
     eq(done, false);
   }
 
@@ -56,7 +67,7 @@ class TestExtension extends Test {
       done = true;
       eq(x, 42);
       async.done();
-    }).runSuspended().tick();
+    }).run();
     eq(done, false);
   }
 }
@@ -67,12 +78,15 @@ class Extra {
     co.suspend();
   }
 
+  @:pecan.action public static function noDelay<T, U, V>(?co:pecan.ICo<T, U, V>):Void {}
+
   @:pecan.accept public static function accept<T, U, V>(delay:Int, ?ret:Int->Void, ?co:pecan.ICo<T, U, V>):Int {
-    haxe.Timer.delay(() -> {
-      ret(42);
-      co.wakeup();
-    }, delay);
-    co.suspend();
+    haxe.Timer.delay(() -> ret(42), delay);
+    return 0;
+  }
+
+  @:pecan.accept public static function acceptNoDelay<T, U, V>(?ret:Int->Void, ?co:pecan.ICo<T, U, V>):Int {
+    ret(42);
     return 0;
   }
 

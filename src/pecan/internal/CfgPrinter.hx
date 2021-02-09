@@ -64,7 +64,12 @@ class CfgPrinter {
         case Suspend(next): out.add('Suspend -> C${num(next)}');
         case Label(label, next): out.add('Label($label) -> C${num(next)}');
         case Join(next): out.add('Join -> C${num(next)}');
-        case Break(next): out.add('Break -> C${num(next)}');
+        case ExtSuspend(e, next):
+          out.add('ExtSuspend -> C${num(next)}\n');
+          tab(e);
+        case ExtAccept(e, next):
+          out.add('ExtAccept -> C${num(next)}\n');
+          tab(e);
         case Halt(e):
           out.add("Halt\n");
           tab(e);

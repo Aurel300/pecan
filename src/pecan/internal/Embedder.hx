@@ -96,20 +96,24 @@ class Embedder {
   }
 
   /**
-  Replaces references to `self` with the local generated during embedding.
+  Replaces references to `self` and `wakeupRet` with the locals generated
+  during embedding.
    */
-  function replaceSelf(states:Array<Cfg>, selfVar:TypedExpr):Void {
+  function replaceSpecial(states:Array<Cfg>, selfVar:TypedExpr, selfAccessWakeupRet:TypedExpr):Void {
     var tvarSelf;
     var tvarSelfAlt;
+    var tvarWakeupRet;
     switch (ctx.typedBlock.expr) {
       case TFunction(tf):
         tvarSelf = tf.args[0].v;
         tvarSelfAlt = tf.args[1].v;
+        tvarWakeupRet = tf.args[2].v;
       case _: throw "!";
     }
     function walk(e:TypedExpr):TypedExpr {
       return (switch (e.expr) {
         case TLocal(tv) if (tv.id == tvarSelf.id || tv.id == tvarSelfAlt.id): selfVar;
+        case TLocal(tv) if (tv.id == tvarWakeupRet.id): selfAccessWakeupRet;
         case _: TypedExprTools.map(e, walk);
       });
     }
@@ -127,6 +131,8 @@ class Embedder {
             nextDef
           );
         case Yield(e, next): Yield(walk(e), next);
+        case ExtSuspend(e, next): ExtSuspend(walk(e), next);
+        case ExtAccept(e, next): ExtAccept(walk(e), next);
         case _: state.kind;
       });
     }
@@ -164,6 +170,8 @@ class Embedder {
       @:privateAccess _pecan_self.labels;
       @:privateAccess _pecan_self.returnedValue;
       @:privateAccess _pecan_self.onHalt;
+      @:privateAccess _pecan_self.expecting;
+      @:privateAccess _pecan_self.wakeupRet;
     };
     switch (retFuncUntyped.expr) {
       case EFunction(_, f):
@@ -186,13 +194,15 @@ class Embedder {
     var selfAccessLabels;
     var selfAccessReturned;
     var selfAccessOnHalt;
+    var selfAccessExpecting;
+    var selfAccessWakeupRet;
     var retFuncTf = (switch (retFunc.expr) {
       case TFunction(tf = {expr: {expr: TBlock(es)}}):
         switch (ctx.typedBlock.expr) {
           case TFunction(otf):
             for (i in 0...ctx.args.length) {
-              // first 7 arguments in otf are pecan-reserved
-              tf.args[i + 1] = otf.args[i + 7];
+              // first 8 arguments in otf are pecan-reserved
+              tf.args[i + 1] = otf.args[i + 8];
             }
           case _: throw "!";
         }
@@ -208,10 +218,12 @@ class Embedder {
         selfAccessLabels = es[9];
         selfAccessReturned = es[10];
         selfAccessOnHalt = es[11];
+        selfAccessExpecting = es[12];
+        selfAccessWakeupRet = es[13];
         tf;
       case _: throw "!";
     });
-    replaceSelf(states, selfVar);
+    replaceSpecial(states, selfVar, selfAccessWakeupRet);
     var acceptsFunc = Context.typeExpr(macro function(_pecan_accepted:$ctIn):Int return 0);
     var acceptsFuncTf = (switch (acceptsFunc.expr) {
       case TFunction(tf): tf;
@@ -308,7 +320,19 @@ class Embedder {
           labels[label] = stateIdx;
           [tstate(next)];
         case Join(next): [tstate(next)];
-        case Break(next): [tstate(next)];
+        case ExtSuspend(e, next):
+          [
+            e,
+            tstate(next),
+          ];
+        case ExtAccept(e, next):
+          [
+            tassign(selfAccessExpecting, tbool(true)),
+            tassign(selfAccessReady, tbool(false)),
+            tassign(selfAccessState, tstate(next)),
+            e,
+            tstate(next),
+          ];
         case Halt(e):
           var ret = [
             tassign(selfAccessTerminated, tbool(true)),

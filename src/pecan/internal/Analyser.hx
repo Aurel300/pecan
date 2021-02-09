@@ -13,6 +13,7 @@ class Analyser {
   var ctx:CoContext;
   var tvarSelf:TVar;
   var tvarSelfAlt:TVar;
+  var tvarWakeupRet:TVar;
   var tvarAccept:TVar;
   var tvarYield:TVar;
   var tvarSuspend:TVar;
@@ -36,11 +37,12 @@ class Analyser {
     };
     tvarSelf = tf.args[0].v;
     tvarSelfAlt = tf.args[1].v;
-    tvarAccept = tf.args[2].v;
-    tvarYield = tf.args[3].v;
-    tvarSuspend = tf.args[4].v;
-    tvarLabel = tf.args[5].v;
-    tvarTerminate = tf.args[6].v;
+    tvarWakeupRet = tf.args[2].v;
+    tvarAccept = tf.args[3].v;
+    tvarYield = tf.args[4].v;
+    tvarSuspend = tf.args[5].v;
+    tvarLabel = tf.args[6].v;
+    tvarTerminate = tf.args[7].v;
 
     var partial = walk(tf.expr);
     partial.last.chain(PartialCfg.mkHalt(null));
@@ -172,7 +174,12 @@ class Analyser {
       case _: throw "!";
     });
     if (target != null) {
-      retFuncTf.expr = tassign(tlocal(target), tlocal(retFuncTf.args[0].v));
+      retFuncTf.expr = tblock([
+        tassign(tlocal(target), tlocal(retFuncTf.args[0].v)),
+        {expr: TCall(tlocal(tvarWakeupRet), []), pos: ctx.pos, t: typeVoid},
+      ]);
+    } else {
+      retFuncTf.expr = {expr: TCall(tlocal(tvarWakeupRet), []), pos: ctx.pos, t: typeVoid};
     }
     args[retPos] = retFunc;
   }
@@ -213,18 +220,12 @@ class Analyser {
         ss(PartialCfg.mkHalt(catches));
       case TCall({expr: TField(_, fa)}, args) if (isPecanAction(fa)):
         insertSelf(args, fieldToFunc(fa));
-        strand([
-          ss(PartialCfg.mkSync(catches, e)),
-          ss(PartialCfg.mkBreak(catches)),
-        ]);
+        ss(PartialCfg.mkExtSuspend(catches, e));
       case TBinop(OpAssign, {expr: TLocal(lhs)}, call = {expr: TCall({expr: TField(_, fa)}, args)}) if (isPecanAccept(fa)):
         var tf = fieldToFunc(fa);
         insertRet(args, tf, lhs);
         insertSelf(args, tf);
-        strand([
-          ss(PartialCfg.mkSync(catches, call)),
-          ss(PartialCfg.mkBreak(catches)),
-        ]);
+        ss(PartialCfg.mkExtAccept(catches, call));
       case TVar(lhs, call = {expr: TCall({expr: TField(_, fa)}, args)}) if (isPecanAccept(fa)):
         var tf = fieldToFunc(fa);
         insertRet(args, tf, lhs);
@@ -235,17 +236,13 @@ class Analyser {
             pos: e.pos,
             expr: TVar(lhs, null),
           })),
-          ss(PartialCfg.mkSync(catches, call)),
-          ss(PartialCfg.mkBreak(catches)),
+          ss(PartialCfg.mkExtAccept(catches, call)),
         ]);
       case TCall({expr: TField(_, fa)}, args) if (isPecanAccept(fa)):
         var tf = fieldToFunc(fa);
         insertRet(args, tf, null);
         insertSelf(args, tf);
-        strand([
-          ss(PartialCfg.mkSync(catches, e)),
-          ss(PartialCfg.mkBreak(catches)),
-        ]);
+        ss(PartialCfg.mkExtAccept(catches, e));
       case TLocal(tv) if (
         tv.id == tvarAccept.id
         || tv.id == tvarYield.id

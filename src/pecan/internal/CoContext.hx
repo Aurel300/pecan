@@ -123,6 +123,7 @@ class CoContext {
       var terminated:Bool = false;
       var accepting:Bool = false;
       var yielding:Bool = false;
+      var expecting:Bool = false;
       var returnedValue:Null<$ctRetAdj>;
       var cfgState:Int = 0;
 
@@ -135,6 +136,8 @@ class CoContext {
           pecan.CoState.Accepting;
         } else if (yielding) {
           pecan.CoState.Yielding;
+        } else if (expecting) {
+          pecan.CoState.Expecting;
         } else if (ready) {
           pecan.CoState.Ready;
         } else {
@@ -159,8 +162,16 @@ class CoContext {
       }
 
       public function wakeup():Void {
-        if (terminated || accepting || yielding)
+        if (terminated || accepting || yielding || expecting)
           throw "invalid state - can only wakeup Co in Ready or Suspended state";
+        ready = true;
+        tick();
+      }
+
+      function wakeupRet():Void {
+        if (!expecting)
+          throw "invalid state - can only return to Co in Expecting state";
+        expecting = false;
         ready = true;
         tick();
       }
@@ -192,6 +203,8 @@ class CoContext {
       public function goto(label:String):Void {
         if (terminated)
           throw "invalid state - Co is terminated";
+        if (expecting)
+          throw "invalid state - Co is expecting a value"; // TODO: should this exist?
         if (!labels.exists(label))
           throw "no such label";
         cfgState = labels[label];
@@ -217,6 +230,7 @@ class CoContext {
         args: [
           {name: "_pecan_self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
           {name: "self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
+          {name: "_pecan_wakeup_ret", type: (macro : () -> Void)},
           // TODO: don't generate accept or yield when !hasIn or !hasOut
           {name: "accept", type: (macro : ()->$ctIn)},
           {name: "yield", type: (macro : $ctOut->Void)},

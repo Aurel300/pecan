@@ -45,7 +45,8 @@ class Cfg {
         case Suspend(next): walk(next);
         case Label(label, next): walk(next);
         case Join(next): walk(next);
-        case Break(next): walk(next);
+        case ExtSuspend(_, next): walk(next);
+        case ExtAccept(_, next): walk(next);
         case Halt(_):
       }
       var c = cfg.catches;

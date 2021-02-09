@@ -68,7 +68,8 @@ class Optimiser {
         case Label(label, next): Label(label, walk(next));
         //case Join(next): walk(next).kind;
         case Join(next): Join(walk(next));
-        case Break(next): Break(walk(next));
+        case ExtSuspend(e, next): ExtSuspend(e, walk(next));
+        case ExtAccept(e, next): ExtAccept(e, walk(next));
         case Halt(e): Halt(e);
       });
       return cache[cfg];

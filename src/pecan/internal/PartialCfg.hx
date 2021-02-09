@@ -30,8 +30,10 @@ class PartialCfg {
     return mk((slot, slots) -> new PartialCfg(c, Label(label, slot()), slots));
   public static function mkJoin(c:PartialCatch)
     return mk((slot, slots) -> new PartialCfg(c, Join(slot()), slots));
-  public static function mkBreak(c:PartialCatch)
-    return mk((slot, slots) -> new PartialCfg(c, Break(slot()), slots));
+  public static function mkExtSuspend(c:PartialCatch, e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, ExtSuspend(e, slot()), slots));
+  public static function mkExtAccept(c:PartialCatch, e:TypedExpr)
+    return mk((slot, slots) -> new PartialCfg(c, ExtAccept(e, slot()), slots));
   public static function mkHalt(c:PartialCatch, ?e:TypedExpr)
     return mk((slot, slots) -> new PartialCfg(c, Halt(e), slots));
 
@@ -105,7 +107,8 @@ class PartialCfg {
       case Suspend(next): Suspend(resolveSlot(next));
       case Label(label, next): Label(label, resolveSlot(next));
       case Join(next): Join(resolveSlot(next));
-      case Break(next): Break(resolveSlot(next));
+      case ExtSuspend(e, next): ExtSuspend(e, resolveSlot(next));
+      case ExtAccept(e, next): ExtAccept(e, resolveSlot(next));
       case Halt(e): Halt(e);
     });
     return cached;
