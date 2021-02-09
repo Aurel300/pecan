@@ -11,8 +11,8 @@ class CoContext {
 
   public static function build(block:Expr, eIn:Expr, eOut:Expr, debug:Bool):Expr {
     var ctx = new CoContext(block, eIn, eOut, debug);
-    ctx.defineInstance();
     ctx.typeExpr();
+    ctx.defineInstance();
     ctx.canonise();
     ctx.analyse();
     ctx.embed();
@@ -46,7 +46,6 @@ class CoContext {
   public function new(block:Expr, eIn:Expr, eOut:Expr, debug:Bool) {
     this.debug = debug;
     pos = block.pos;
-    ctRet = (macro : Void);
     this.block = (switch (block.expr) {
       case EFunction(_, f):
         args = f.args;
@@ -74,14 +73,16 @@ class CoContext {
     ctOut = parseIOType(eOut);
     tIn = Context.resolveType(ctIn, pos);
     tOut = Context.resolveType(ctOut, pos);
-    tRet = Context.resolveType(ctRet, pos);
     // normalise types
     ctIn = Context.toComplexType(tIn);
     ctOut = Context.toComplexType(tOut);
-    ctRet = Context.toComplexType(tRet);
     hasIn = !tIn.match(TAbstract(_.get().name => "Void", []));
     hasOut = !tOut.match(TAbstract(_.get().name => "Void", []));
-    hasRet = !tRet.match(TAbstract(_.get().name => "Void", []));
+    if (ctRet != null) {
+      // if a type annotation was given for the return, normalise it
+      tRet = Context.resolveType(ctRet, pos);
+      ctRet = Context.toComplexType(tRet);
+    }
     var instanceNum = instanceCtr++;
     tpCo = {
       name: 'CoInstance_${instanceNum}', // TODO: more stable naming
@@ -209,23 +210,30 @@ class CoContext {
   }
 
   function typeExpr():Void {
-    var f = macro function(
-      _pecan_self:$ctCo,
-      self:$ctCo,
-      // TODO: don't generate accept or yield when !hasIn or !hasOut
-      accept:()->$ctIn,
-      yield:$ctOut->Void,
-      suspend:()->Void,
-      label:String->Void,
-      terminate:()->Void
-    ):$ctRet {};
-    switch (f.expr) {
-      case EFunction(_, f):
-        args.iter(f.args.push);
-        f.expr = block;
-      case _: throw "!";
-    }
+    var f = {
+      expr: EFunction(FAnonymous, {
+        ret: ctRet,
+        expr: block,
+        args: [
+          {name: "_pecan_self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
+          {name: "self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
+          // TODO: don't generate accept or yield when !hasIn or !hasOut
+          {name: "accept", type: (macro : ()->$ctIn)},
+          {name: "yield", type: (macro : $ctOut->Void)},
+          {name: "suspend", type: (macro : ()->Void)},
+          {name: "label", type: (macro : String->Void)},
+          {name: "terminate", type: (macro : ()->Void)},
+        ].concat(args),
+      }),
+      pos: pos,
+    };
     typedBlock = Context.typeExpr(f);
+    tRet = (switch (typedBlock.t) {
+      case TFun(_, t): t;
+      case _: throw "!";
+    });
+    ctRet = Context.toComplexType(tRet);
+    hasRet = !tRet.match(TAbstract(_.get().name => "Void", []));
   }
 
   function canonise():Void {

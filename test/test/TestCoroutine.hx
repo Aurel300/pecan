@@ -732,6 +732,21 @@ class TestCoroutine extends Test {
     eq(c.take(), "A");
     exc(() -> c.goto("invalid"));
   }
+
+  /**
+    Test return type inference.
+  **/
+  function testInference() {
+    var c = co(return "foo").run();
+    eq(c.returned, "foo");
+    var c = co(return 1).run();
+    eq(c.returned, 1);
+    var c = co({
+      if (true) return 1.2;
+      else return 1;
+    }).run();
+    eq(c.returned, 1.2);
+  }
 }
 
 class DummyObject {
