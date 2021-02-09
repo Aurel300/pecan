@@ -11,10 +11,7 @@
 <li>(optional) the input type, and</li>
 <li>(optional) the output type.</li>
 </ol>
-<p>The 1st argument can either be a Haxe expression (usually a block expression), or a function. The latter case allows declaring arguments (see <a href="features-invoking.html" title="Invoking">invoking</a>) and return types (see <a href="features-states.html#return" title="States">states</a>).</p>
-<blockquote>
-<p>Note that a non-<code>Void</code> return type must be declared explicitly, as it cannot be inferred. This may be fixed in later versions of <code>pecan</code>.</p>
-</blockquote>
+<p>The 1st argument can either be a Haxe expression (usually a block expression), or a function. The latter case allows declaring arguments (see <a href="features-invoking.html" title="Invoking">invoking</a>) and explicitly annotating return types (see <a href="features-states.html#return" title="States">states</a>).</p>
 <p>Within the code block, these variables and functions are implicitly available:</p>
 <ul>
 <li><code>self</code> - refers to the current instance of <a href="api-pecan-ico.html" title="pecan.ICo"><code>pecan.ICo&lt;...&gt;</code></a>.</li>
@@ -83,11 +80,12 @@ co.wakeup();</code></pre>
 
 <div class="example">
 
-<h3>Example: <code>!</code> prefix for immediately invoked coroutines with return values</h3><pre><code class="language-haxe">var co = !function():String {
+<h3>Example: <code>!</code> prefix for immediately invoked coroutines with explicit return type</h3><pre><code class="language-haxe">var co = !function():String {
   suspend();
   return &quot;hello&quot;;
 };
 co.wakeup();</code></pre>
+<p>Note that the return type is inferred, so this example would work without the <code>function</code> as well. However, there may be some cases where an explicit type hint is required for correct compilation.</p>
 </div>
 
 <div class="example">

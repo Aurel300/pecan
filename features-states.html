@@ -13,7 +13,7 @@
 <li><code>Yielding</code> - waiting to provide a value with a <a href="features-io.html#output" title="Input and output"><code>yield(...)</code></a> call.</li>
 <li><code>Terminated</code> - finished, cannot be woken up again.</li>
 </ul>
-<h3 id="return">Return value</h3><p>If a coroutine had a return type declared and it terminated with a <code>return</code> statement, the returned value is available in the <a href="api-pecan-ico.html#returned" title="pecan.ICo"><code>returned</code></a> field. Otherwise, the field is set to <code>null</code>. Coroutines that return <code>Void</code> will have <code>returned</code> with a type of <code>pecan.Void</code>.</p>
+<h3 id="return">Return value</h3><p>If a coroutine terminated with a <code>return</code> statement, the returned value is available in the <a href="api-pecan-ico.html#returned" title="pecan.ICo"><code>returned</code></a> field. Otherwise, the field is set to <code>null</code>. Coroutines that return <code>Void</code> will have <code>returned</code> with a type of <code>pecan.Void</code>.</p>
 <div class="example">
 
 <h3>Example: <code>returned</code> usage</h3><pre><code class="language-haxe">var adder = pecan.Co.co(function():String {
