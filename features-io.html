@@ -39,6 +39,7 @@ trace(&#39;${languages.take()} is awesome!&#39;); // output: Haxe 4 is awesome!<
 <blockquote>
 <p>The return value of the function is never used! It is only used for type inference. Returning <code>null</code> (or a default value on static targets) is recommended.</p>
 </blockquote>
+<p>Unlike <a href="features-suspending.html#custom" title="Suspending calls">custom suspending functions</a>, custom input functions always suspend the coroutine and always wake it up when the value is returned.</p>
 <div class="example">
 
 <h3>Example: delay that eventually returns a <code>String</code></h3><pre><code class="language-haxe">class Foobar {
@@ -47,11 +48,7 @@ trace(&#39;${languages.take()} is awesome!&#39;); // output: Haxe 4 is awesome!<
     ?ret:String-&gt;Void,
     ?co:pecan.ICo&lt;Any, Any, Any&gt;
   ):String {
-    haxe.Timer.delay(() -&gt; {
-      ret(&quot;foo&quot;);
-      co.wakeup();
-    }, ms);
-    co.suspend();
+    haxe.Timer.delay(() -&gt; ret(&quot;foo&quot;), ms);
     return null;
   }
 }</code></pre>
