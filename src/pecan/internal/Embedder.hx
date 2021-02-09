@@ -60,6 +60,8 @@ class Embedder {
           cases.iter(c -> c.values.iter(findUses));
         case Accept(v, _): use(v, state);
         case Yield(e, _): findUses(e);
+        case ExtSuspend(e, _): findUses(e);
+        case ExtAccept(e, _): findUses(e);
         case Halt(e): findUses(e);
         case _:
       }
@@ -88,6 +90,8 @@ class Embedder {
             nextDef
           );
         case Yield(e, next): Yield(replaceDecls(e), next);
+        case ExtSuspend(e, next): ExtSuspend(replaceDecls(e), next);
+        case ExtAccept(e, next): ExtAccept(replaceDecls(e), next);
         case Halt(e): Halt(replaceDecls(e));
         case _: state.kind;
       });
