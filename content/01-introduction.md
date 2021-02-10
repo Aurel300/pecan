@@ -47,7 +47,7 @@ var factory = pecan.Co.co({   // (1)
   trace("Bye!");
 }, (_ : String), (_ : Int));  // (6)
 
-var instance = co.run();      // (7)
+var instance = factory.run(); // (7)
                               // output: Greeter online!
 instance.wakeup();            // (8)
 instance.give("world");       // (9)
