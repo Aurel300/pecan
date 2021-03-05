@@ -14,10 +14,8 @@ class CoTools {
     var old = target.onHalt;
     target.onHalt = () -> {
       ret(target.returned);
-      co.wakeup();
       old();
     };
-    co.suspend();
     return null;
   }
 }

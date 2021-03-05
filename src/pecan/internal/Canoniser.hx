@@ -67,6 +67,18 @@ class Canoniser {
       case TArray(walk(_, pre) => e1, walk(_, pre) => e2):
         createTempVar = false;
         TArray(e1, e2);
+      case TBinop(OpBoolAnd, e1, e2):
+        return walk({
+          pos: e.pos,
+          t: e.t,
+          expr: TIf(e1, e2, tbool(false)),
+        }, pre);
+      case TBinop(OpBoolOr, e1, e2):
+        return walk({
+          pos: e.pos,
+          t: e.t,
+          expr: TIf(e1, tbool(true), e2),
+        }, pre);
       case TBinop(op, walk(_, pre) => e1, walk(_, pre) => e2): TBinop(op, e1, e2);
       case TField(walk(_, pre) => e, fa):
         createTempVar = false;

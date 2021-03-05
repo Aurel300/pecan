@@ -460,16 +460,13 @@ class TestCoroutine extends Test {
     eq(c.state, Terminated);
 
     // EBinop short-circuit
-    // TODO: implement in CFG
-    /*
-    var c = coDebug(eq(accept() && accept(), false), (_ : Bool)).run();
-    c.give(false);
+    var c = co(eq(accept() && accept(), false), (_ : Bool)).run();
     c.give(false);
     eq(c.state, Terminated);
     var c = co(eq(accept() || accept(), true), (_ : Bool)).run();
+    c.give(false);
     c.give(true);
     eq(c.state, Terminated);
-    */
 
     // EField
     var c = co(eq(accept().x, 1), (_ : {x:Int})).run();
@@ -746,6 +743,22 @@ class TestCoroutine extends Test {
       else return 1;
     }).run();
     eq(c.returned, 1.2);
+  }
+
+  function testShortCircuit() {
+    var c = co({
+      var a:{x:Int} = null;
+      if (a != null && a.x == 0) return 0;
+      return 1;
+    }).run();
+    eq(c.returned, 1);
+
+    var c = co({
+      var a:{x:Int} = null;
+      if (a == null || a.x == 0) return 1;
+      return 0;
+    }).run();
+    eq(c.returned, 1);
   }
 }
 
