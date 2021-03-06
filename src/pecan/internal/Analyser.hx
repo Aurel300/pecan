@@ -462,7 +462,10 @@ class Analyser {
         var after = PartialCfg.mkJoin(catches);
         catches = {
           handlers: [ for (c in newCatches) {
-            var handler = walk(c.expr);
+            var handler = strand([
+              ss(PartialCfg.mkJoin(catches)),
+              walk(c.expr),
+            ]);
             handler.last.chain(after);
             {
               v: c.v,

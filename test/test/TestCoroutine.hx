@@ -760,6 +760,15 @@ class TestCoroutine extends Test {
     }).run();
     eq(c.returned, 1);
   }
+
+  function testForIterations() {
+    // a previous iteration of the Optimiser messed this up
+    final COUNT = 3;
+    var c = co({
+      return [for (i in 0...COUNT) Std.random(2)];
+    }).run();
+    eq(c.returned.length, 3);
+  }
 }
 
 class DummyObject {

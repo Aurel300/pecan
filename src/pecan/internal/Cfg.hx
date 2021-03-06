@@ -9,6 +9,35 @@ class Cfg {
   public var catches:CfgCatch<Cfg>;
   public var kind:CfgKind<Cfg>;
 
+  public var successors(get, never):Array<Cfg>;
+  public var successorsCatch(get, never):Array<Cfg>;
+  public var successorsAll(get, never):Array<Cfg>;
+
+  function get_successors():Array<Cfg> {
+    return (switch (kind) {
+      case Sync(_, next) | Goto(next) | Accept(_, next) | Yield(_, next)
+        | Suspend(next) | Label(_, next) | Join(next) | ExtSuspend(_, next)
+        | ExtAccept(_, next): [next];
+      case GotoIf(_, nextIf, nextElse): [nextIf, nextElse];
+      case GotoSwitch(_, cases, nextDef): cases.map(c -> c.next).concat([nextDef]);
+      case Halt(_): [];
+    });
+  }
+
+  function get_successorsCatch():Array<Cfg> {
+    var ret = [];
+    var c = catches;
+    while (c != null) {
+      ret = ret.concat(c.handlers.map(h -> h.cfg));
+      c = c.parent;
+    }
+    return ret;
+  }
+
+  function get_successorsAll():Array<Cfg> {
+    return successors.concat(successorsCatch);
+  }
+
   public function new(catches:CfgCatch<Cfg>, kind:CfgKind<Cfg>) {
     this.catches = catches;
     this.kind = kind;
@@ -43,7 +72,7 @@ class Cfg {
         case Accept(_, next): walk(next);
         case Yield(_, next): walk(next);
         case Suspend(next): walk(next);
-        case Label(label, next): walk(next);
+        case Label(_, next): walk(next);
         case Join(next): walk(next);
         case ExtSuspend(_, next): walk(next);
         case ExtAccept(_, next): walk(next);
