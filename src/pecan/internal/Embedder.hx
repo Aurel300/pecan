@@ -146,6 +146,8 @@ class Embedder {
     var ctCo = ctx.ctCo;
     var ctIn = ctx.ctIn;
     var ctOut = ctx.ctOut;
+    var ctInAdj = ctx.ctInAdj;
+    var ctOutAdj = ctx.ctOutAdj;
     /*
     ((_pecan_self, args...) -> T{
       var locals ...;
@@ -228,7 +230,7 @@ class Embedder {
       case _: throw "!";
     });
     replaceSpecial(states, selfVar, selfAccessWakeupRet);
-    var acceptsFunc = Context.typeExpr(macro function(_pecan_accepted:$ctIn):Int return 0);
+    var acceptsFunc = Context.typeExpr(macro function(_pecan_accepted:$ctInAdj):Int return 0);
     var acceptsFuncTf = (switch (acceptsFunc.expr) {
       case TFunction(tf): tf;
       case _: throw "!";

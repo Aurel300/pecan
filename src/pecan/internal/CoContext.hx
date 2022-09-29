@@ -26,6 +26,9 @@ class CoContext {
   public var ctIn:ComplexType;
   public var ctOut:ComplexType;
   public var ctRet:ComplexType;
+  public var ctInAdj:ComplexType;
+  public var ctOutAdj:ComplexType;
+  public var ctRetAdj:ComplexType;
   public var tIn:Type;
   public var tOut:Type;
   public var tRet:Type;
@@ -82,7 +85,10 @@ class CoContext {
       // if a type annotation was given for the return, normalise it
       tRet = Context.resolveType(ctRet, pos);
       ctRet = Context.toComplexType(tRet);
+      ctRetAdj = !hasRet ? (macro : pecan.Void) : ctRet;
     }
+    ctInAdj = !hasIn ? (macro : pecan.Void) : ctIn;
+    ctOutAdj = !hasOut ? (macro : pecan.Void) : ctOut;
     var instanceNum = instanceCtr++;
     tpCo = {
       name: 'CoInstance_${instanceNum}', // TODO: more stable naming
@@ -110,13 +116,12 @@ class CoContext {
   }
 
   function defineInstance():Void {
-    var ctRetAdj = !hasRet ? (macro : pecan.Void) : ctRet;
-    var tdCo = macro class CoInstance implements pecan.ICo<$ctIn, $ctOut, $ctRetAdj> {
+    var tdCo = macro class CoInstance implements pecan.ICo<$ctInAdj, $ctOutAdj, $ctRetAdj> {
       public var state(get, never):pecan.CoState;
       public var returned(get, never):Null<$ctRetAdj>;
       public var onHalt:()->Void = () -> {};
       var actions:()->Int;
-      var accepts:(val:$ctIn)->Int;
+      var accepts:(val:$ctInAdj)->Int;
       var yields:()->$ctOut;
       var labels:Map<String, Int>;
       var ready:Bool = true;
@@ -181,7 +186,7 @@ class CoContext {
         ready = false;
       }
 
-      public function give(value:$ctIn):Void $e{hasIn ? macro {
+      public function give(value:$ctInAdj):Void $e{hasIn ? macro {
         tick();
         if (!accepting)
           throw "invalid state - can only give to Co in Accepting state";
@@ -190,7 +195,7 @@ class CoContext {
         wakeup();
       } : macro throw "cannot give to this coroutine"};
 
-      public function take():$ctOut $e{hasOut ? macro {
+      public function take():$ctOutAdj $e{hasOut ? macro {
         tick();
         if (!yielding)
           throw "invalid state - can only take from Co in Yielding state";
@@ -228,12 +233,12 @@ class CoContext {
         ret: ctRet,
         expr: block,
         args: [
-          {name: "_pecan_self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
-          {name: "self", type: (macro : pecan.ICo<$ctIn, $ctOut, Any>)},
+          {name: "_pecan_self", type: (macro : pecan.ICo<$ctInAdj, $ctOutAdj, Any>)},
+          {name: "self", type: (macro : pecan.ICo<$ctInAdj, $ctOutAdj, Any>)},
           {name: "_pecan_wakeup_ret", type: (macro : () -> Void)},
           // TODO: don't generate accept or yield when !hasIn or !hasOut
-          {name: "accept", type: (macro : ()->$ctIn)},
-          {name: "yield", type: (macro : $ctOut->Void)},
+          {name: "accept", type: (macro : ()->$ctInAdj)},
+          {name: "yield", type: (macro : $ctOutAdj->Void)},
           {name: "suspend", type: (macro : ()->Void)},
           {name: "label", type: (macro : String->Void)},
           {name: "terminate", type: (macro : ()->Void)},
@@ -248,6 +253,7 @@ class CoContext {
     });
     ctRet = Context.toComplexType(tRet);
     hasRet = !tRet.match(TAbstract(_.get().name => "Void", []));
+    ctRetAdj = !hasRet ? (macro : pecan.Void) : ctRet;
   }
 
   function canonise():Void {
